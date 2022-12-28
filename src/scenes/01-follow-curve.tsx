@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import * as THREE from "three";
-import { RootState, useFrame, useThree } from "@react-three/fiber";
+import { RootState, useFrame } from "@react-three/fiber";
 import {
   PerspectiveCamera,
   Environment,
