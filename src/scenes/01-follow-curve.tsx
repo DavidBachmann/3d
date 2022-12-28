@@ -39,7 +39,7 @@ const Scene = () => {
   const position = new THREE.Vector3();
   const curve = new TrefoilKnot();
   const track = new THREE.TubeGeometry(curve, 250, 0.05, 10, true);
-  const { camera } = useThree();
+  const camera = useThree((state) => state.camera);
 
   useFrame((state: RootState) => {
     if (!sphere.current) {

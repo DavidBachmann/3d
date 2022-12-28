@@ -2,7 +2,7 @@ lockfileVersion: 5.4
 
 specifiers:
   '@hmans/controlfreak': ^0.2.0
-  '@react-spring/web': ^9.6.1
+  '@react-spring/three': ^9.6.1
   '@react-three/drei': ^9.48.1
   '@react-three/fiber': ^8.9.1
   '@types/react': ^18.0.26
@@ -26,7 +26,7 @@ specifiers:
 
 dependencies:
   '@hmans/controlfreak': 0.2.0
-  '@react-spring/web': 9.6.1_biqbaboplfbrettd7655fr4n2y
+  '@react-spring/three': 9.6.1_apy442gfwftbonstkdzutj33fm
   '@react-three/drei': 9.48.1_cuekctkttqjec6nzdci24egcwe
   '@react-three/fiber': 8.9.1_4tzez3c2xpzuefjrvhpyy55bva
   '@types/three': 0.146.0
@@ -917,20 +917,6 @@ packages:
 
   /@react-spring/types/9.6.1:
     resolution: {integrity: sha512-POu8Mk0hIU3lRXB3bGIGe4VHIwwDsQyoD1F394OK7STTiX9w4dG3cTLljjYswkQN+hDSHRrj4O36kuVa7KPU8Q==}
-    dev: false
-
-  /@react-spring/web/9.6.1_biqbaboplfbrettd7655fr4n2y:
-    resolution: {integrity: sha512-X2zR6q2Z+FjsWfGAmAXlQaoUHbPmfuCaXpuM6TcwXPpLE1ZD4A1eys/wpXboFQmDkjnrlTmKvpVna1MjWpZ5Hw==}
-    peerDependencies:
-      react: ^16.8.0 || ^17.0.0 || ^18.0.0
-      react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0
-    dependencies:
-      '@react-spring/animated': 9.6.1_react@18.2.0
-      '@react-spring/core': 9.6.1_react@18.2.0
-      '@react-spring/shared': 9.6.1_react@18.2.0
-      '@react-spring/types': 9.6.1
-      react: 18.2.0
-      react-dom: 18.2.0_react@18.2.0
     dev: false
 
   /@react-three/drei/9.48.1_cuekctkttqjec6nzdci24egcwe:
