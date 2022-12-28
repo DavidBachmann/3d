@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { controller } from "./controller";
 
 import Scene01 from "./scenes/01-follow-curve";
-import Scene02 from "./scenes/02-textures";
+import Scene02 from "./scenes/02-snow-day";
 
 const onCreated = (state: RootState) => {};
 
@@ -17,16 +17,16 @@ const App = () => {
   });
 
   return (
-    <BrowserRouter>
-      <Canvas onCreated={onCreated} shadows dpr={[1, 2]}>
-        <Perf position="top-left" />
-        <OrbitControls makeDefault />
+    <Canvas onCreated={onCreated} shadows dpr={[1, 2]}>
+      <Perf position="top-left" />
+      <OrbitControls makeDefault />
+      <BrowserRouter>
         <Routes>
           <Route path="/01" element={<Scene01 />} />
           <Route path="/02" element={<Scene02 />} />
         </Routes>
-      </Canvas>
-    </BrowserRouter>
+      </BrowserRouter>
+    </Canvas>
   );
 };
 
