@@ -22,6 +22,7 @@ const App = () => {
       <OrbitControls makeDefault />
       <BrowserRouter>
         <Routes>
+          <Route path="/" element={<Scene02 />} />
           <Route path="/01" element={<Scene01 />} />
           <Route path="/02" element={<Scene02 />} />
         </Routes>
