@@ -1,11 +1,11 @@
 import { useRef } from "react";
 import * as THREE from "three";
-import { RootState, useFrame } from "@react-three/fiber";
+import { RootState, useFrame, useThree } from "@react-three/fiber";
 import {
-  PerspectiveCamera,
   Environment,
   Sphere,
-  useHelper,
+  Trail,
+  PresentationControls,
 } from "@react-three/drei";
 import { TrefoilKnot } from "three-stdlib";
 import { LayerMaterial, Color, Depth, Noise } from "lamina";
@@ -14,7 +14,7 @@ import { LayerMaterial, Color, Depth, Noise } from "lamina";
   Anything you put in here will be filmed (once) by a cubemap-camera and applied to the scenes environment, and optionally background. */
 const LaminaCubeMap = () => (
   <Environment background resolution={64}>
-    <mesh scale={100}>
+    <mesh scale={64}>
       <sphereGeometry args={[1, 64, 64]} />
       <LayerMaterial side={THREE.BackSide}>
         <Color color="blue" alpha={1} mode="normal" />
@@ -36,13 +36,13 @@ const LaminaCubeMap = () => (
 const Scene = () => {
   const scale = 15;
   const sphere = useRef<THREE.Group>(null);
-  const perspectiveCamera = useRef<THREE.PerspectiveCamera>(null);
   const position = new THREE.Vector3();
   const curve = new TrefoilKnot();
-  const track = new THREE.TubeGeometry(curve, 250, 0.2, 10, true);
+  const track = new THREE.TubeGeometry(curve, 250, 0.05, 10, true);
+  const { camera } = useThree();
 
   useFrame((state: RootState) => {
-    if (!sphere.current || !perspectiveCamera.current) {
+    if (!sphere.current) {
       return;
     }
 
@@ -57,32 +57,42 @@ const Scene = () => {
     // Move sphere along curve
     sphere.current.position.copy(position);
 
-    perspectiveCamera.current.lookAt(position);
+    camera.lookAt(position);
   });
-
-  useHelper(perspectiveCamera, THREE.CameraHelper);
 
   return (
     <>
       <LaminaCubeMap />
       <group>
         <mesh scale={[scale, scale, scale]} geometry={track}>
-          <meshBasicMaterial color="indianred" />
+          <meshStandardMaterial color={0xff0ff} />
         </mesh>
-        <group ref={sphere}>
-          <Sphere args={[20, 32, 32]} position={[0, 0, 0]}>
-            <meshStandardMaterial color={0xff00ff} />
-          </Sphere>
-          <PerspectiveCamera
-            makeDefault
-            ref={perspectiveCamera}
-            near={0.01}
-            far={10000}
-            position={[0, 0, 1000]}
-            fov={60}
-          />
-        </group>
+        <PresentationControls
+          global={true} // Spin globally or by dragging the model
+          cursor={true} // Whether to toggle cursor style on drag
+          snap={true} // Snap-back to center (can also be a spring config)
+          speed={0.5} // Speed factor
+          zoom={1} // Zoom factor when half the polar-max is reached
+          config={{ mass: 1, tension: 170, friction: 26 }} // Spring config
+        >
+          <group>
+            <Trail
+              width={200}
+              length={10}
+              color={0xff00ff}
+              local={false}
+              attenuation={(t: number) => {
+                return t * t * t * t;
+              }}
+            >
+              <Sphere ref={sphere} args={[20, 32, 32]} position={[0, 0, 0]}>
+                <meshStandardMaterial color={0xff00ff} />
+              </Sphere>
+            </Trail>
+          </group>
+        </PresentationControls>
       </group>
+      <axesHelper />
     </>
   );
 };

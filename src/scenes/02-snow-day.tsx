@@ -1,7 +1,8 @@
 import { useFrame, useThree } from "@react-three/fiber";
-import { useTexture, Stage } from "@react-three/drei";
+import { useTexture, Stage, Cloud, Sky, Trail } from "@react-three/drei";
 import * as THREE from "three";
 import { Fragment, useMemo, useRef } from "react";
+import { Depth, LayerMaterial } from "lamina";
 
 const Snow = ({ depth = 30, amount = 3000 }) => {
   const tempObject = new THREE.Object3D();
@@ -154,8 +155,8 @@ const Scene = () => {
   return (
     <Fragment key="02">
       <color attach="background" args={[0xf3f6fb]} />
-      <fogExp2 attach="fog" color={0xf3f6fb} density={0.02} />
-
+      <Sky />
+      <fogExp2 attach="fog" color={0xf3f6fb} density={0.12} />
       <Stage
         preset="rembrandt"
         environment="sunset"
@@ -163,12 +164,12 @@ const Scene = () => {
         shadows="contact"
         intensity={0.5}
       >
-        <Snow depth={100} amount={3000} />
+        <Snow depth={32} amount={3000} />
         <group ref={ref}>
           <Box />
         </group>
       </Stage>
-      <Ground size={100} />
+      <Ground size={32} />
     </Fragment>
   );
 };

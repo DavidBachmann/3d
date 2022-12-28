@@ -19,7 +19,6 @@ const App = () => {
   return (
     <Canvas onCreated={onCreated} shadows dpr={[1, 2]}>
       <Perf position="top-left" />
-      <OrbitControls makeDefault />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Scene02 />} />
