@@ -1,14 +1,16 @@
 import { Canvas, RootState } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
 import { Perf } from "r3f-perf";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { controller } from "./controller";
 
 import Scene01 from "./scenes/01-follow-curve";
 import Scene02 from "./scenes/02-snow-day";
 
-const onCreated = (state: RootState) => {};
+const onCreated = (state: RootState) => {
+  console.log("Hello world");
+  console.log(state);
+};
 
 const App = () => {
   useEffect(() => {

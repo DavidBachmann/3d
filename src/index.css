@@ -31,3 +31,7 @@ body {
     helvetica neue, helvetica, ubuntu, roboto, noto, segoe ui, arial, sans-serif;
   color: black;
 }
+
+canvas {
+  touch-action: none;
+}

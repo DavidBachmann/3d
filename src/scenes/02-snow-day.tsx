@@ -1,13 +1,13 @@
-import { useFrame, useThree } from "@react-three/fiber";
-import { useTexture, Stage, Cloud, Sky, Trail } from "@react-three/drei";
+import { Fragment, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { Fragment, useMemo, useRef } from "react";
-import { Depth, LayerMaterial } from "lamina";
+import { useFrame, useThree } from "@react-three/fiber";
+import { useTexture, Stage, OrbitControls, Lathe } from "@react-three/drei";
 
-const Snow = ({ depth = 30, amount = 3000 }) => {
+const Snow = ({ depth = 30, amount = 3000, speed = 2 }) => {
   const tempObject = new THREE.Object3D();
   const snow = useRef<THREE.InstancedMesh>(null);
-  const { viewport, camera } = useThree();
+  const viewport = useThree((state) => state.viewport);
+  const camera = useThree((state) => state.camera);
 
   const flakeColor = useTexture("/textures/flake.png");
 
@@ -33,9 +33,9 @@ const Snow = ({ depth = 30, amount = 3000 }) => {
     const arr = new Float32Array(amount * 3);
     for (let i = 0; i < amount; i++) {
       const i3 = 3 * i;
-      arr[i3] = Math.floor(Math.random() * 6 - 3) * 0.2;
-      arr[i3 + 1] = Math.floor(Math.random() * 6 + 3) * 0.125;
-      arr[i3 + 2] = Math.floor(Math.random() * 6 - 3) * 0.1;
+      arr[i3] = Math.floor(Math.random() * 6 - 3) * 0.2 * speed;
+      arr[i3 + 1] = Math.floor(Math.random() * 6 + 3) * 0.125 * speed;
+      arr[i3 + 2] = Math.floor(Math.random() * 6 - 3) * 0.1 * speed;
     }
     return arr;
   }, []);
@@ -113,9 +113,7 @@ const Ground = ({ size = 200 }) => {
     <mesh position={[0, 0, 0]} rotation-x={-Math.PI / 2} receiveShadow>
       <planeGeometry args={[size, size]} />
       <meshStandardMaterial
-        displacementScale={0.2}
         map={colorMap}
-        displacementMap={colorMap}
         normalMap={normalMap}
         roughnessMap={roughnessMap}
         aoMap={aoMap}
@@ -136,7 +134,7 @@ const Box = () => {
   ]);
 
   return (
-    <mesh position={[0, 0.6, 0]} castShadow>
+    <mesh position={[0, 0.5, 0]} castShadow>
       <boxGeometry args={[1, 1, 1, 1, 1]} />
       <meshStandardMaterial
         map={colorMap}
@@ -151,18 +149,31 @@ const Box = () => {
 
 const Scene = () => {
   const ref = useRef<THREE.Group>(null);
+  const camera = useThree((state) => state.camera);
+
+  useLayoutEffect(() => {
+    camera.position.set(0, 1, 1);
+  }, [camera]);
+
+  const points = useMemo(() => {
+    const _points: THREE.Vector2[] = [];
+    for (let i = 0; i < 20; i++) {
+      _points.push(new THREE.Vector2(Math.sin(i * 0.2) * 10 + 5, (i - 5) * 2));
+    }
+
+    return _points;
+  }, []);
 
   return (
     <Fragment key="02">
       <color attach="background" args={[0xf3f6fb]} />
-      <Sky />
-      <fogExp2 attach="fog" color={0xf3f6fb} density={0.12} />
+      <fogExp2 attach="fog" color={0xf3f6fb} density={0.1} />
       <Stage
-        preset="rembrandt"
-        environment="sunset"
+        environment="forest"
         center={{ disableY: true }}
         shadows="contact"
         intensity={0.5}
+        adjustCamera={2}
       >
         <Snow depth={32} amount={3000} />
         <group ref={ref}>
@@ -170,6 +181,16 @@ const Scene = () => {
         </group>
       </Stage>
       <Ground size={32} />
+      <OrbitControls
+        minPolarAngle={Math.PI / 4}
+        maxPolarAngle={Math.PI / 2}
+        zoomSpeed={1}
+        enableZoom={true}
+        makeDefault
+      />
+      <Lathe args={[points, 32]} position={[0, 0, 0]} scale={1.2}>
+        <meshPhongMaterial color={0xf3f6fb} side={THREE.BackSide} />
+      </Lathe>
     </Fragment>
   );
 };

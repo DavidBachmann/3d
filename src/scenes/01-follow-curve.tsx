@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { Fragment, useRef } from "react";
 import * as THREE from "three";
 import { RootState, useFrame, useThree } from "@react-three/fiber";
 import {
@@ -61,7 +61,7 @@ const Scene = () => {
   });
 
   return (
-    <>
+    <Fragment key="01">
       <LaminaCubeMap />
       <group>
         <mesh scale={[scale, scale, scale]} geometry={track}>
@@ -93,7 +93,7 @@ const Scene = () => {
         </PresentationControls>
       </group>
       <axesHelper />
-    </>
+    </Fragment>
   );
 };
 
