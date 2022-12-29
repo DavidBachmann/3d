@@ -9,10 +9,24 @@ import {
   Float,
 } from "@react-three/drei";
 import { animated, useSpring } from "@react-spring/three";
-import { Color, Depth, LayerMaterial, Noise } from "lamina";
+import { Color, Depth, LayerMaterial } from "lamina";
+import type { GLTF } from "three-stdlib/loaders/GLTFLoader";
+import { Mesh } from "three";
+
+interface ModelGLTF extends GLTF {
+  nodes: {
+    "floor-holed": Mesh;
+    "floor-main": Mesh;
+    backdrop: Mesh;
+    lid: Mesh;
+    lid2: Mesh;
+    abracadabra: Mesh;
+    underside: Mesh;
+  };
+}
 
 function Model({ isVisible = false }: { isVisible: boolean }) {
-  const { nodes } = useGLTF("/hole.gltf") as { nodes: any };
+  const { nodes } = useGLTF("/hole.gltf") as unknown as ModelGLTF;
   const [isOpen, set] = useState(false);
   const initial = useRef(true);
 

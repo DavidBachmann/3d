@@ -2,6 +2,7 @@ import { Fragment, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useTexture, Stage, OrbitControls, Lathe } from "@react-three/drei";
+import { repeatTextures } from "../utils/repeatTexture";
 
 const Snow = ({ depth = 30, amount = 3000, speed = 2 }) => {
   const tempObject = new THREE.Object3D();
@@ -78,22 +79,6 @@ const Snow = ({ depth = 30, amount = 3000, speed = 2 }) => {
       />
     </instancedMesh>
   );
-};
-
-const repeatTextures = (
-  textures: THREE.Texture | THREE.Texture[],
-  repeat = 8
-) => {
-  if (!Array.isArray(textures)) {
-    return;
-  }
-
-  for (let i = 0; i < textures.length; i++) {
-    const t = textures[i];
-    t.repeat.set(repeat, repeat);
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  }
 };
 
 const Ground = ({ size = 200 }) => {
