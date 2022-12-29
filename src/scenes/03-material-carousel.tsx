@@ -6,7 +6,6 @@ import {
   PerspectiveCamera,
   Sphere,
   Environment,
-  useHelper,
   Float,
 } from "@react-three/drei";
 import { animated, useSpring } from "@react-spring/three";
@@ -125,20 +124,26 @@ const Scene = () => {
       <color attach="background" args={[0xffffff]} />
       <PerspectiveCamera
         ref={perspectiveCamera}
-        position={[0, 2.5, 4]}
-        rotation={[-0.25, 0, 0]}
+        position={[0, 2.5, 3.5]}
+        rotation={[-0.3, 0, 0]}
         fov={60}
         makeDefault
       />
       <Float
-        speed={1} // Animation speed, defaults to 1
-        rotationIntensity={1} // XYZ rotation intensity, defaults to 1
+        speed={2} // Animation speed, defaults to 1
+        rotationIntensity={0.5} // XYZ rotation intensity, defaults to 1
         floatIntensity={0.5} // Up/down float intensity, works like a multiplier with floatingRange,defaults to 1
         floatingRange={[-0.1, 0.1]} // Range of y-axis values the object will float within, defaults to [-0.1,0.1]
       >
         <animated.group position-y={float}>
           <Sphere args={[0.5, 32, 32]} position={[0, 0, 0]} castShadow>
-            <meshStandardMaterial color={"rebeccapurple"} />
+            <meshStandardMaterial
+              color="purple"
+              metalness={0.3}
+              roughness={0.5}
+              emissive="rebeccapurple"
+              emissiveIntensity={1}
+            />
           </Sphere>
         </animated.group>
       </Float>
@@ -163,17 +168,20 @@ const Scene = () => {
         <mesh scale={64}>
           <sphereGeometry args={[1, 64, 64]} />
           <LayerMaterial side={THREE.BackSide}>
-            <Color color={isVisible ? "red" : "blue"} alpha={1} mode="normal" />
+            <Color
+              color={isVisible ? "purple" : "blue"}
+              alpha={1}
+              mode="multiply"
+            />
             <Depth
-              colorA="red"
+              colorA="orange"
               colorB="blue"
-              alpha={0.8}
+              alpha={0.2}
               mode="normal"
               near={0}
               far={150}
               origin={[100, 100, 100]}
             />
-            <Noise mapping="local" type="cell" scale={0.2} mode="softlight" />
           </LayerMaterial>
         </mesh>
       </Environment>
