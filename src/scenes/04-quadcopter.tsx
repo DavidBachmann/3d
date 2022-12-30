@@ -8,6 +8,7 @@ import {
   OrthographicCamera,
   Plane,
   useHelper,
+  shaderMaterial,
 } from "@react-three/drei";
 import { useControls } from "leva";
 import create from "zustand";
@@ -29,10 +30,49 @@ import {
   useBox,
   usePlane,
 } from "@react-three/cannon";
-import { createPortal, useFrame, useThree } from "@react-three/fiber";
+import { createPortal, useFrame, useThree, extend } from "@react-three/fiber";
 import { repeatTextures } from "../utils/repeatTexture";
 import { controller } from "../controller";
-import { CameraHelper } from "three";
+import { scale } from "../utils/scale";
+import { clamp } from "../utils/clamp";
+
+const batteryVertexShader = `
+  varying vec2 vUv;
+
+  void main() {
+    vec4 modelPosition = modelMatrix * vec4(position, 1.0);
+    vec4 viewPosition = viewMatrix * modelPosition;
+    vec4 projectionPosition = projectionMatrix * viewPosition;
+
+    gl_Position = projectionPosition;
+
+    vUv = uv;
+  }
+`;
+
+const batteryFragmentShader = `
+  uniform float uBatteryPercentage;
+
+  varying vec2 vUv;
+
+  vec3 red = vec3(1.0, 0.0, 0.0);
+  vec3 green = vec3(0.0, 1.0, 0.0);
+
+  void main() {
+    gl_FragColor = vec4(mix(red, green, uBatteryPercentage), 1.0);
+  }
+`;
+
+const BatteryShaderMaterial = shaderMaterial(
+  {
+    uBatteryPercentage: 1,
+  },
+  batteryVertexShader,
+  batteryFragmentShader
+);
+
+// Make shader material available as jsx element
+extend({ BatteryShaderMaterial });
 
 const useGameStore = create(() => ({
   mutation: {
@@ -73,6 +113,7 @@ type GLTFResult = GLTF & {
     ["drone-motor-geometry003"]: THREE.Mesh;
     ["drone-motor-geometry003_1"]: THREE.Mesh;
     ["drone-arm003"]: THREE.Mesh;
+    ["drone-battery-indicator"]: THREE.Mesh;
   };
   materials: {
     ["drone-propeller-material"]: THREE.MeshStandardMaterial;
@@ -93,15 +134,16 @@ const spawnPoint = new THREE.Vector3(0, 0, 0);
 
 const gravity = -9.8;
 const droneSize = 0.32;
-const droneHeight = 0.22;
+const droneHeight = 0.4;
 
-export const Model = forwardRef<THREE.Group, ModelProps>(
+const Drone = forwardRef<THREE.Group, ModelProps>(
   ({ droneApi: api }, drone: MutableRefObject<THREE.Group>) => {
     const { nodes, materials } = useGLTF(
       "/gltfs/quadcopter.gltf"
     ) as unknown as GLTFResult;
     const mutation = useGameStore((state) => state.mutation);
     const droneCamera = useRef<THREE.PerspectiveCamera>(null);
+    const batteryShaderMaterial = useRef<any>(null);
     const camera = useThree((state) => state.camera);
     const propellers = useRef<THREE.Mesh[]>([]);
 
@@ -116,31 +158,24 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
       });
     });
 
-    useHelper(droneCamera, CameraHelper);
-
-    const scale = (
-      inputY: number,
-      yRange: Array<number>,
-      xRange: Array<number>
-    ): number => {
-      const [xMin, xMax] = xRange;
-      const [yMin, yMax] = yRange;
-
-      const percent = (inputY - yMin) / (yMax - yMin);
-      const outputX = percent * (xMax - xMin) + xMin;
-
-      return outputX;
-    };
+    useHelper(droneCamera, THREE.CameraHelper);
 
     useFrame((_, dt) => {
+      // Get controls
       const throttling = controller.controls.throttling.value;
       const pitching = controller.controls.pitching.value;
       const rolling = controller.controls.rolling.value;
       const yawing = controller.controls.yawing.value;
-      const thrustInput = controller.controls.thrustYaw.value.y;
       const yawInput = controller.controls.thrustYaw.value.x * -1;
       const pitchInput = controller.controls.pitchRoll.value.y;
       const rollInput = controller.controls.pitchRoll.value.x;
+
+      // Drive shader uniform
+      batteryShaderMaterial.current.uBatteryPercentage = clamp(
+        mutation.battery / 100,
+        1,
+        0
+      );
 
       const pos = drone.current.getWorldPosition(cameraVector);
       const altitude = Math.abs(
@@ -166,7 +201,7 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
 
       const batteryEmptyLift = stableLift - 0.015;
 
-      // Scale lift from 1.85 to 1.75 when battery is from 100% to 0%
+      // Scale lift with battery percentage
       const scaledAmpleLift = scale(
         mutation.battery,
         [100, 0],
@@ -182,7 +217,7 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
 
       if (throttling && !outOfBattery) {
         // Drain the batteries
-        mutation.battery = Math.max(mutation.battery - 0.1, 0);
+        mutation.battery = Math.max(mutation.battery - 0.05, 0);
 
         // Gradually increase lift if throttling
         lift.current = scaledLift;
@@ -266,17 +301,8 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
     });
 
     return (
-      <group dispose={null} scale={0.5} ref={drone}>
+      <group dispose={null} scale={0.65} ref={drone}>
         <group position={[0, 0, 0]}>
-          <mesh
-            ref={(ref) => propellers.current.push(ref)}
-            name="drone-propeller"
-            castShadow
-            receiveShadow
-            geometry={nodes["drone-propeller"].geometry}
-            material={materials["drone-propeller-material"]}
-            position={[0.2867, 0.0504, -0.2463]}
-          />
           <PerspectiveCamera
             ref={droneCamera}
             fov={60}
@@ -285,11 +311,16 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
             near={0.01}
             far={10}
           />
-          <group
-            name="drone-body"
-            position={[0.0065, 0.0228, 0.1]}
-            rotation={[0, 0, 0]}
-          >
+          <mesh
+            name="drone-propeller"
+            ref={(ref) => propellers.current.push(ref)}
+            castShadow
+            receiveShadow
+            geometry={nodes["drone-propeller"].geometry}
+            material={materials["drone-propeller-material"]}
+            position={[0.29, 0.05, -0.25]}
+          />
+          <group name="drone-body" position={[0.01, 0.02, 0.08]}>
             <mesh
               name="drone-body-geometry"
               castShadow
@@ -312,7 +343,7 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
               material={materials["drone-camera"]}
             />
           </group>
-          <group name="drone-motor" position={[0.2738, -0.0431, -0.2401]}>
+          <group name="drone-motor" position={[0.27, -0.04, -0.24]}>
             <mesh
               name="drone-motor-geometry"
               castShadow
@@ -334,7 +365,7 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
             receiveShadow
             geometry={nodes["drone-arm"].geometry}
             material={materials["drone-body-dark-material"]}
-            position={[0.164, -0.0125, -0.1876]}
+            position={[0.16, -0.01, -0.19]}
           />
           <mesh
             name="drone-propeller001"
@@ -343,9 +374,9 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
             receiveShadow
             geometry={nodes["drone-propeller001"].geometry}
             material={materials["drone-propeller-material"]}
-            position={[-0.2874, 0.0504, -0.2463]}
+            position={[-0.29, 0.05, -0.25]}
           />
-          <group name="drone-motor001" position={[-0.2745, -0.0431, -0.2401]}>
+          <group name="drone-motor001" position={[-0.27, -0.04, -0.24]}>
             <mesh
               name="drone-motor-geometry001"
               castShadow
@@ -367,7 +398,7 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
             receiveShadow
             geometry={nodes["drone-arm001"].geometry}
             material={materials["drone-body-dark-material"]}
-            position={[-0.1647, -0.0125, -0.1876]}
+            position={[-0.16, -0.01, -0.19]}
           />
           <mesh
             name="drone-propeller002"
@@ -376,9 +407,9 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
             receiveShadow
             geometry={nodes["drone-propeller002"].geometry}
             material={materials["drone-propeller-material"]}
-            position={[-0.2874, 0.0504, 0.1881]}
+            position={[-0.29, 0.05, 0.19]}
           />
-          <group name="drone-motor002" position={[-0.2745, -0.0431, 0.1818]}>
+          <group name="drone-motor002" position={[-0.27, -0.04, 0.18]}>
             <mesh
               name="drone-motor-geometry002"
               castShadow
@@ -400,7 +431,7 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
             receiveShadow
             geometry={nodes["drone-arm002"].geometry}
             material={materials["drone-body-dark-material"]}
-            position={[-0.1647, -0.0125, 0.1293]}
+            position={[-0.16, -0.01, 0.13]}
           />
           <mesh
             name="drone-propeller003"
@@ -409,9 +440,9 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
             receiveShadow
             geometry={nodes["drone-propeller003"].geometry}
             material={materials["drone-propeller-material"]}
-            position={[0.2867, 0.0504, 0.1881]}
+            position={[0.29, 0.05, 0.19]}
           />
-          <group name="drone-motor003" position={[0.2738, -0.0431, 0.1818]}>
+          <group name="drone-motor003" position={[0.27, -0.04, 0.18]}>
             <mesh
               name="drone-motor-geometry003"
               castShadow
@@ -433,8 +464,17 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
             receiveShadow
             geometry={nodes["drone-arm003"].geometry}
             material={materials["drone-body-dark-material"]}
-            position={[0.164, -0.0125, 0.1293]}
+            position={[0.16, -0.01, 0.13]}
           />
+          <mesh
+            name="drone-battery-indicator"
+            castShadow
+            receiveShadow
+            geometry={nodes["drone-battery-indicator"].geometry}
+            position={[0.01, 0.02, 0.08]}
+          >
+            <batteryShaderMaterial ref={batteryShaderMaterial} />
+          </mesh>
         </group>
       </group>
     );
@@ -442,19 +482,17 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
 );
 
 const Ground = ({ size = 16 }) => {
-  const [colorMap, normalMap, roughnessMap, aoMap, displacementMap] =
-    useTexture(
-      [
-        "/textures/stylized-stone-floor/stylized-stone-floor-color.jpg",
-        "/textures/stylized-stone-floor/stylized-stone-floor-normal.jpg",
-        "/textures/stylized-stone-floor/stylized-stone-floor-roughness.jpg",
-        "/textures/stylized-stone-floor/stylized-stone-floor-ao.jpg",
-        "/textures/stylized-stone-floor/stylized-stone-floor-height.png",
-      ],
-      (textures) => {
-        repeatTextures(textures, size);
-      }
-    );
+  const [colorMap, normalMap, roughnessMap, displacementMap] = useTexture(
+    [
+      "/textures/stylized-stone-floor/stylized-stone-floor-color.jpg",
+      "/textures/stylized-stone-floor/stylized-stone-floor-normal.jpg",
+      "/textures/stylized-stone-floor/stylized-stone-floor-roughness.jpg",
+      "/textures/stylized-stone-floor/stylized-stone-floor-height.png",
+    ],
+    (textures) => {
+      repeatTextures(textures, size);
+    }
+  );
 
   const position = new THREE.Vector3(0, 0, 0);
   const rotation = new THREE.Euler(-Math.PI / 2, 0, 0);
@@ -518,7 +556,7 @@ function PhysicsWorld() {
   const [drone, droneApi] = useBox(
     () => ({
       args: [droneSize, droneHeight, droneSize],
-      position: [0, droneHeight / 2, 0],
+      position: [0, droneHeight, 0],
       mass: 0.18,
       angularDamping: 0.5,
       linearDamping: 0.6,
@@ -528,7 +566,7 @@ function PhysicsWorld() {
   );
   return (
     <Fragment key="physics-world">
-      <Model ref={drone} droneApi={droneApi} />
+      <Drone ref={drone} droneApi={droneApi} />
       <Ground />
     </Fragment>
   );
