@@ -7,6 +7,11 @@ import {
   OrbitControls,
   PivotControls,
   Stage,
+  Environment,
+  RenderTexture,
+  useFBO,
+  OrthographicCamera,
+  Plane,
 } from "@react-three/drei";
 import { useControls } from "leva";
 import create from "zustand";
@@ -26,12 +31,18 @@ import {
   useBox,
   usePlane,
 } from "@react-three/cannon";
-import { addEffect, useFrame, useThree } from "@react-three/fiber";
+import {
+  addEffect,
+  createPortal,
+  useFrame,
+  useThree,
+} from "@react-three/fiber";
 import { repeatTextures } from "../utils/repeatTexture";
 import { controller } from "../controller";
 import { clamp } from "../utils/clamp";
 
 const useGameStore = create(() => ({
+  pipCamera: null,
   mutation: {
     y: 0,
     battery: 100,
@@ -425,8 +436,6 @@ const Ground = ({ size = 16 }) => {
 };
 
 function PhysicsWorld() {
-  const camera = useRef<THREE.Camera>(null);
-
   const [drone, droneApi] = useBox(
     () => ({
       args: [droneSize, droneHeight, droneSize],
@@ -450,12 +459,6 @@ function PhysicsWorld() {
 
   return (
     <Fragment key="physics-world">
-      <PerspectiveCamera
-        ref={camera}
-        makeDefault
-        fov={70}
-        position={[0, 0, 0]}
-      />
       <Model ref={drone} droneApi={droneApi} />
       <Ground />
     </Fragment>
@@ -463,6 +466,7 @@ function PhysicsWorld() {
 }
 
 function Scene() {
+  const perspectiveCamera = useRef(null);
   const mutation = useGameStore((state) => state.mutation);
   const [_, update] = useControls(() => ({
     droneY: mutation.y,
@@ -474,6 +478,8 @@ function Scene() {
   }));
 
   useEffect(() => {
+    useGameStore.setState({ pipCamera: perspectiveCamera });
+
     const id = setInterval(() => {
       update({
         droneY: mutation.y,
@@ -492,15 +498,71 @@ function Scene() {
     <Fragment key="04">
       <color attach="background" args={[0xf3f6fb]} />
       <fogExp2 attach="fog" color={0xf3f6fb} density={0.1} />
-      <ambientLight intensity={0.4} />
+      <ambientLight intensity={0.8} />
       <directionalLight position={[2, 3, 0]} castShadow shadow-mapSize={1024} />
-      <EnvironmentCube preset="dawn" />
+      <PerspectiveCamera
+        ref={perspectiveCamera}
+        makeDefault
+        fov={70}
+        position={[0, 0, 0]}
+      />
+      <Environment preset="sunset" />
+      <SceneRenderer />
       <Physics iterations={32} size={10} gravity={[0, gravity, 0]}>
-        {/*<Debug>*/}
-        <PhysicsWorld />
-        {/*</Debug>*/}
+        <Debug>
+          <PhysicsWorld />
+        </Debug>
       </Physics>
     </Fragment>
+  );
+}
+
+function SceneRenderer() {
+  const frameBuffer = useFBO(window.innerWidth / 4, window.innerHeight / 4);
+
+  const pipCamera = useGameStore((state) => state.pipCamera);
+
+  const pipScene = new THREE.Scene();
+  const orthographicCamera = useRef();
+
+  // just to make component re-render on canvas size change
+  useThree();
+
+  useFrame(({ gl, camera, scene }) => {
+    gl.autoClear = false;
+
+    /** Render scene from camera to a render target */
+    gl.setRenderTarget(frameBuffer);
+    gl.render(scene, pipCamera.current);
+
+    // render main scene
+    gl.setRenderTarget(null);
+
+    // Render original scene
+    gl.render(scene, camera);
+
+    // Render PIP scene
+    gl.render(pipScene, orthographicCamera.current);
+
+    gl.autoClear = true;
+  }, 1);
+
+  const r = window.innerWidth / window.innerHeight;
+  const SIZE = 200;
+
+  return createPortal(
+    <>
+      <OrthographicCamera ref={orthographicCamera} near={0.0001} far={1} />
+      <group
+        position-z={-0.1}
+        position-x={-window.innerWidth / 2 + (SIZE * r) / 2}
+      >
+        <Plane args={[SIZE, SIZE / r, 1]} position-y={0}>
+          <meshBasicMaterial map={frameBuffer.texture} />
+        </Plane>
+      </group>
+    </>,
+    pipScene
   );
 }
 
