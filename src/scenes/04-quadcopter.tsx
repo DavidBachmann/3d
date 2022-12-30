@@ -25,9 +25,12 @@ import {
   Debug,
   Physics,
   PublicApi,
+  SphereArgs,
   Triplet,
   useBox,
+  useConeTwistConstraint,
   usePlane,
+  useSphere,
 } from "@react-three/cannon";
 import { createPortal, useFrame, useThree } from "@react-three/fiber";
 import { repeatTextures } from "../utils/repeatTexture";
@@ -49,7 +52,7 @@ const useGameStore = create(() => ({
 const usePipStore = create(() => ({
   camera: null,
   mutation: {
-    isActive: true,
+    isActive: false,
   },
 }));
 
@@ -404,20 +407,36 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
   }
 );
 
-const Ground = ({ size = 16 }) => {
-  const [colorMap, normalMap, roughnessMap, aoMap, displacementMap] =
-    useTexture(
-      [
-        "/textures/stylized-stone-floor/stylized-stone-floor-color.jpg",
-        "/textures/stylized-stone-floor/stylized-stone-floor-normal.jpg",
-        "/textures/stylized-stone-floor/stylized-stone-floor-roughness.jpg",
-        "/textures/stylized-stone-floor/stylized-stone-floor-ao.jpg",
-        "/textures/stylized-stone-floor/stylized-stone-floor-height.png",
-      ],
-      (textures) => {
-        repeatTextures(textures, size);
-      }
+type FooProps = {
+  fooApi: PublicApi;
+  args: SphereArgs;
+  position: THREE.Vector3;
+};
+
+const Foo = forwardRef<THREE.Group, FooProps>(
+  ({ fooApi: api, args, position }, foo: MutableRefObject<THREE.Group>) => {
+    return (
+      <group ref={foo} position={position}>
+        <mesh receiveShadow>
+          <sphereGeometry args={args} />
+          <meshStandardMaterial color="blue" />
+        </mesh>
+      </group>
     );
+  }
+);
+
+const Ground = ({ size = 16 }) => {
+  const [colorMap, normalMap, roughnessMap] = useTexture(
+    [
+      "/textures/stylized-stone-floor/stylized-stone-floor-color.jpg",
+      "/textures/stylized-stone-floor/stylized-stone-floor-normal.jpg",
+      "/textures/stylized-stone-floor/stylized-stone-floor-roughness.jpg",
+    ],
+    (textures) => {
+      repeatTextures(textures, size);
+    }
+  );
 
   const position = new THREE.Vector3(0, 0, 0);
   const rotation = new THREE.Euler(-Math.PI / 2, 0, 0);
@@ -437,7 +456,6 @@ const Ground = ({ size = 16 }) => {
         map={colorMap}
         normalMap={normalMap}
         roughnessMap={roughnessMap}
-        displacementMap={displacementMap}
       />
     </mesh>
   );
@@ -489,9 +507,32 @@ function PhysicsWorld() {
     }),
     useRef<THREE.Group>(null)
   );
+
+  const args: SphereArgs = [0.1];
+  const position = new THREE.Vector3(1, 1, 1);
+
+  const [foo, fooApi] = useSphere(
+    () => ({
+      args,
+      position: position.toArray() as Triplet,
+      mass: 0.001,
+    }),
+    useRef<THREE.Group>(null)
+  );
+
+  useConeTwistConstraint(drone, foo, {
+    axisA: [0, 0, 0],
+    axisB: [0, 0, 0],
+    twistAngle: 8,
+    collideConnected: true,
+    pivotA: [0, 0, 0],
+    pivotB: [0, 0.5, 0],
+  });
+
   return (
     <Fragment key="physics-world">
       <Model ref={drone} droneApi={droneApi} />
+      <Foo ref={foo} fooApi={fooApi} args={args} position={position} />
       <Ground />
     </Fragment>
   );
@@ -522,13 +563,7 @@ function Scene() {
       <PerspectiveCamera makeDefault fov={70} position={[0, 0, 0]} />
       <Environment preset="sunset" />
       <SceneRenderer />
-      <Physics
-        iterations={5}
-        size={2}
-        maxSubSteps={10}
-        gravity={[0, gravity, 0]}
-        allowSleep={false}
-      >
+      <Physics iterations={32} size={3} gravity={[0, gravity, 0]}>
         <PhysicsDebug debug={state.physicsDebug}>
           <PhysicsWorld />
         </PhysicsDebug>
@@ -559,6 +594,8 @@ function SceneRenderer() {
       // Render PIP scene
       gl.render(pipScene, orthographicCamera.current);
     }
+
+    gl.autoClear = true;
   }, 1);
 
   const r = window.innerWidth / window.innerHeight;
