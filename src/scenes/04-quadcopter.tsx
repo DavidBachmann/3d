@@ -11,11 +11,11 @@ import {
 } from "@react-three/drei";
 import { useControls } from "leva";
 import create from "zustand";
-import { subscribeWithSelector } from "zustand/middleware";
 import {
   forwardRef,
   Fragment,
   MutableRefObject,
+  ReactNode,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -438,8 +438,6 @@ const Ground = ({ size = 16 }) => {
         normalMap={normalMap}
         roughnessMap={roughnessMap}
         displacementMap={displacementMap}
-        aoMap={aoMap}
-        aoMapIntensity={2}
       />
     </mesh>
   );
@@ -499,7 +497,22 @@ function PhysicsWorld() {
   );
 }
 
+function PhysicsDebug({
+  debug = false,
+  children,
+}: {
+  debug?: boolean;
+  children: ReactNode;
+}) {
+  const Noop = ({ children }) => <>{children}</>;
+  return debug ? <Debug>{children}</Debug> : <Noop>{children}</Noop>;
+}
+
 function Scene() {
+  const [state] = useControls(() => ({
+    physicsDebug: true,
+  }));
+
   return (
     <Fragment key="04">
       <color attach="background" args={[0xf3f6fb]} />
@@ -509,10 +522,16 @@ function Scene() {
       <PerspectiveCamera makeDefault fov={70} position={[0, 0, 0]} />
       <Environment preset="sunset" />
       <SceneRenderer />
-      <Physics iterations={32} size={10} gravity={[0, gravity, 0]}>
-        {/*<Debug>*/}
-        <PhysicsWorld />
-        {/*</Debug>*/}
+      <Physics
+        iterations={5}
+        size={2}
+        maxSubSteps={10}
+        gravity={[0, gravity, 0]}
+        allowSleep={false}
+      >
+        <PhysicsDebug debug={state.physicsDebug}>
+          <PhysicsWorld />
+        </PhysicsDebug>
       </Physics>
     </Fragment>
   );
