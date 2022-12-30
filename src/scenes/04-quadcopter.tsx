@@ -3,7 +3,6 @@ import {
   PerspectiveCamera,
   useGLTF,
   useTexture,
-  PivotControls,
   Environment,
   useFBO,
   OrthographicCamera,
@@ -36,7 +35,6 @@ import { clamp } from "../utils/clamp";
 import { CameraHelper } from "three";
 
 const useGameStore = create(() => ({
-  pipCamera: null,
   mutation: {
     y: 0,
     battery: 100,
@@ -44,6 +42,12 @@ const useGameStore = create(() => ({
     yaw: 0,
     pitch: 0,
     roll: 0,
+  },
+}));
+
+const useRefStore = create(() => ({
+  refs: {
+    pipCamera: null,
   },
 }));
 
@@ -106,14 +110,15 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
     const roll = useRef(0);
 
     useLayoutEffect(() => {
-      useGameStore.setState({ pipCamera: droneCamera });
+      useRefStore.setState((prev) => ({
+        refs: {
+          ...prev.refs,
+          pipCamera: droneCamera,
+        },
+      }));
     });
 
     useHelper(droneCamera, CameraHelper);
-
-    const { pivotControls } = useControls({
-      pivotControls: false,
-    });
 
     useFrame((_, dt) => {
       const throttling = controller.controls.throttling.value;
@@ -226,177 +231,175 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
 
     return (
       <group dispose={null} scale={0.5} ref={drone}>
-        <PivotControls visible={pivotControls}>
-          <group position={[0, 0, 0]}>
+        <group position={[0, 0, 0]}>
+          <mesh
+            ref={(ref) => propellers.current.push(ref)}
+            name="drone-propeller"
+            castShadow
+            receiveShadow
+            geometry={nodes["drone-propeller"].geometry}
+            material={materials["drone-propeller-material"]}
+            position={[0.2867, 0.0504, -0.2463]}
+          />
+          <PerspectiveCamera
+            ref={droneCamera}
+            fov={60}
+            position={[0, 0, droneSize]}
+            rotation={[Math.PI, 0, Math.PI]}
+            near={0.01}
+            far={10}
+          />
+          <group
+            name="drone-body"
+            position={[0.0065, 0.0228, 0.1]}
+            rotation={[0, 0, 0]}
+          >
             <mesh
-              ref={(ref) => propellers.current.push(ref)}
-              name="drone-propeller"
+              name="drone-body-geometry"
               castShadow
               receiveShadow
-              geometry={nodes["drone-propeller"].geometry}
-              material={materials["drone-propeller-material"]}
-              position={[0.2867, 0.0504, -0.2463]}
-            />
-            <PerspectiveCamera
-              ref={droneCamera}
-              fov={60}
-              position={[0, 0, droneSize]}
-              rotation={[Math.PI, 0, Math.PI]}
-              near={0.01}
-              far={10}
-            />
-            <group
-              name="drone-body"
-              position={[0.0065, 0.0228, 0.1]}
-              rotation={[0, 0, 0]}
-            >
-              <mesh
-                name="drone-body-geometry"
-                castShadow
-                receiveShadow
-                geometry={nodes["drone-body-geometry"].geometry}
-                material={materials["drone-body-dark-material"]}
-              />
-              <mesh
-                name="drone-body-geometry_1"
-                castShadow
-                receiveShadow
-                geometry={nodes["drone-body-geometry_1"].geometry}
-                material={materials["drone-body-white-material"]}
-              />
-              <mesh
-                name="drone-body-geometry_2"
-                castShadow
-                receiveShadow
-                geometry={nodes["drone-body-geometry_2"].geometry}
-                material={materials["drone-camera"]}
-              />
-            </group>
-            <group name="drone-motor" position={[0.2738, -0.0431, -0.2401]}>
-              <mesh
-                name="drone-motor-geometry"
-                castShadow
-                receiveShadow
-                geometry={nodes["drone-motor-geometry"].geometry}
-                material={materials["drone-body-dark-material"]}
-              />
-              <mesh
-                name="drone-motor-geometry_1"
-                castShadow
-                receiveShadow
-                geometry={nodes["drone-motor-geometry_1"].geometry}
-                material={materials["drone-body-white-material"]}
-              />
-            </group>
-            <mesh
-              name="drone-arm"
-              castShadow
-              receiveShadow
-              geometry={nodes["drone-arm"].geometry}
+              geometry={nodes["drone-body-geometry"].geometry}
               material={materials["drone-body-dark-material"]}
-              position={[0.164, -0.0125, -0.1876]}
             />
             <mesh
-              name="drone-propeller001"
-              ref={(ref) => propellers.current.push(ref)}
+              name="drone-body-geometry_1"
               castShadow
               receiveShadow
-              geometry={nodes["drone-propeller001"].geometry}
-              material={materials["drone-propeller-material"]}
-              position={[-0.2874, 0.0504, -0.2463]}
-            />
-            <group name="drone-motor001" position={[-0.2745, -0.0431, -0.2401]}>
-              <mesh
-                name="drone-motor-geometry001"
-                castShadow
-                receiveShadow
-                geometry={nodes["drone-motor-geometry001"].geometry}
-                material={materials["drone-body-dark-material"]}
-              />
-              <mesh
-                name="drone-motor-geometry001_1"
-                castShadow
-                receiveShadow
-                geometry={nodes["drone-motor-geometry001_1"].geometry}
-                material={materials["drone-body-white-material"]}
-              />
-            </group>
-            <mesh
-              name="drone-arm001"
-              castShadow
-              receiveShadow
-              geometry={nodes["drone-arm001"].geometry}
-              material={materials["drone-body-dark-material"]}
-              position={[-0.1647, -0.0125, -0.1876]}
+              geometry={nodes["drone-body-geometry_1"].geometry}
+              material={materials["drone-body-white-material"]}
             />
             <mesh
-              name="drone-propeller002"
-              ref={(ref) => propellers.current.push(ref)}
+              name="drone-body-geometry_2"
               castShadow
               receiveShadow
-              geometry={nodes["drone-propeller002"].geometry}
-              material={materials["drone-propeller-material"]}
-              position={[-0.2874, 0.0504, 0.1881]}
-            />
-            <group name="drone-motor002" position={[-0.2745, -0.0431, 0.1818]}>
-              <mesh
-                name="drone-motor-geometry002"
-                castShadow
-                receiveShadow
-                geometry={nodes["drone-motor-geometry002"].geometry}
-                material={materials["drone-body-dark-material"]}
-              />
-              <mesh
-                name="drone-motor-geometry002_1"
-                castShadow
-                receiveShadow
-                geometry={nodes["drone-motor-geometry002_1"].geometry}
-                material={materials["drone-body-white-material"]}
-              />
-            </group>
-            <mesh
-              name="drone-arm002"
-              castShadow
-              receiveShadow
-              geometry={nodes["drone-arm002"].geometry}
-              material={materials["drone-body-dark-material"]}
-              position={[-0.1647, -0.0125, 0.1293]}
-            />
-            <mesh
-              name="drone-propeller003"
-              ref={(ref) => propellers.current.push(ref)}
-              castShadow
-              receiveShadow
-              geometry={nodes["drone-propeller003"].geometry}
-              material={materials["drone-propeller-material"]}
-              position={[0.2867, 0.0504, 0.1881]}
-            />
-            <group name="drone-motor003" position={[0.2738, -0.0431, 0.1818]}>
-              <mesh
-                name="drone-motor-geometry003"
-                castShadow
-                receiveShadow
-                geometry={nodes["drone-motor-geometry003"].geometry}
-                material={materials["drone-body-dark-material"]}
-              />
-              <mesh
-                name="drone-motor-geometry003_1"
-                castShadow
-                receiveShadow
-                geometry={nodes["drone-motor-geometry003_1"].geometry}
-                material={materials["drone-body-white-material"]}
-              />
-            </group>
-            <mesh
-              name="drone-arm003"
-              castShadow
-              receiveShadow
-              geometry={nodes["drone-arm003"].geometry}
-              material={materials["drone-body-dark-material"]}
-              position={[0.164, -0.0125, 0.1293]}
+              geometry={nodes["drone-body-geometry_2"].geometry}
+              material={materials["drone-camera"]}
             />
           </group>
-        </PivotControls>
+          <group name="drone-motor" position={[0.2738, -0.0431, -0.2401]}>
+            <mesh
+              name="drone-motor-geometry"
+              castShadow
+              receiveShadow
+              geometry={nodes["drone-motor-geometry"].geometry}
+              material={materials["drone-body-dark-material"]}
+            />
+            <mesh
+              name="drone-motor-geometry_1"
+              castShadow
+              receiveShadow
+              geometry={nodes["drone-motor-geometry_1"].geometry}
+              material={materials["drone-body-white-material"]}
+            />
+          </group>
+          <mesh
+            name="drone-arm"
+            castShadow
+            receiveShadow
+            geometry={nodes["drone-arm"].geometry}
+            material={materials["drone-body-dark-material"]}
+            position={[0.164, -0.0125, -0.1876]}
+          />
+          <mesh
+            name="drone-propeller001"
+            ref={(ref) => propellers.current.push(ref)}
+            castShadow
+            receiveShadow
+            geometry={nodes["drone-propeller001"].geometry}
+            material={materials["drone-propeller-material"]}
+            position={[-0.2874, 0.0504, -0.2463]}
+          />
+          <group name="drone-motor001" position={[-0.2745, -0.0431, -0.2401]}>
+            <mesh
+              name="drone-motor-geometry001"
+              castShadow
+              receiveShadow
+              geometry={nodes["drone-motor-geometry001"].geometry}
+              material={materials["drone-body-dark-material"]}
+            />
+            <mesh
+              name="drone-motor-geometry001_1"
+              castShadow
+              receiveShadow
+              geometry={nodes["drone-motor-geometry001_1"].geometry}
+              material={materials["drone-body-white-material"]}
+            />
+          </group>
+          <mesh
+            name="drone-arm001"
+            castShadow
+            receiveShadow
+            geometry={nodes["drone-arm001"].geometry}
+            material={materials["drone-body-dark-material"]}
+            position={[-0.1647, -0.0125, -0.1876]}
+          />
+          <mesh
+            name="drone-propeller002"
+            ref={(ref) => propellers.current.push(ref)}
+            castShadow
+            receiveShadow
+            geometry={nodes["drone-propeller002"].geometry}
+            material={materials["drone-propeller-material"]}
+            position={[-0.2874, 0.0504, 0.1881]}
+          />
+          <group name="drone-motor002" position={[-0.2745, -0.0431, 0.1818]}>
+            <mesh
+              name="drone-motor-geometry002"
+              castShadow
+              receiveShadow
+              geometry={nodes["drone-motor-geometry002"].geometry}
+              material={materials["drone-body-dark-material"]}
+            />
+            <mesh
+              name="drone-motor-geometry002_1"
+              castShadow
+              receiveShadow
+              geometry={nodes["drone-motor-geometry002_1"].geometry}
+              material={materials["drone-body-white-material"]}
+            />
+          </group>
+          <mesh
+            name="drone-arm002"
+            castShadow
+            receiveShadow
+            geometry={nodes["drone-arm002"].geometry}
+            material={materials["drone-body-dark-material"]}
+            position={[-0.1647, -0.0125, 0.1293]}
+          />
+          <mesh
+            name="drone-propeller003"
+            ref={(ref) => propellers.current.push(ref)}
+            castShadow
+            receiveShadow
+            geometry={nodes["drone-propeller003"].geometry}
+            material={materials["drone-propeller-material"]}
+            position={[0.2867, 0.0504, 0.1881]}
+          />
+          <group name="drone-motor003" position={[0.2738, -0.0431, 0.1818]}>
+            <mesh
+              name="drone-motor-geometry003"
+              castShadow
+              receiveShadow
+              geometry={nodes["drone-motor-geometry003"].geometry}
+              material={materials["drone-body-dark-material"]}
+            />
+            <mesh
+              name="drone-motor-geometry003_1"
+              castShadow
+              receiveShadow
+              geometry={nodes["drone-motor-geometry003_1"].geometry}
+              material={materials["drone-body-white-material"]}
+            />
+          </group>
+          <mesh
+            name="drone-arm003"
+            castShadow
+            receiveShadow
+            geometry={nodes["drone-arm003"].geometry}
+            material={materials["drone-body-dark-material"]}
+            position={[0.164, -0.0125, 0.1293]}
+          />
+        </group>
       </group>
     );
   }
@@ -444,26 +447,6 @@ const Ground = ({ size = 16 }) => {
 };
 
 function PhysicsWorld() {
-  const [drone, droneApi] = useBox(
-    () => ({
-      args: [droneSize, droneHeight, droneSize],
-      position: [0, droneHeight / 2, 0],
-      mass: 0.18,
-      angularDamping: 0.5,
-      linearDamping: 0.6,
-      fixedRotation: false,
-    }),
-    useRef<THREE.Group>(null)
-  );
-  return (
-    <Fragment key="physics-world">
-      <Model ref={drone} droneApi={droneApi} />
-      <Ground />
-    </Fragment>
-  );
-}
-
-function Scene() {
   const mutation = useGameStore((state) => state.mutation);
   const [_, update] = useControls(() => ({
     droneY: mutation.y,
@@ -489,6 +472,26 @@ function Scene() {
     return () => clearTimeout(id);
   }, []);
 
+  const [drone, droneApi] = useBox(
+    () => ({
+      args: [droneSize, droneHeight, droneSize],
+      position: [0, droneHeight / 2, 0],
+      mass: 0.18,
+      angularDamping: 0.5,
+      linearDamping: 0.6,
+      fixedRotation: false,
+    }),
+    useRef<THREE.Group>(null)
+  );
+  return (
+    <Fragment key="physics-world">
+      <Model ref={drone} droneApi={droneApi} />
+      <Ground />
+    </Fragment>
+  );
+}
+
+function Scene() {
   return (
     <Fragment key="04">
       <color attach="background" args={[0xf3f6fb]} />
@@ -511,14 +514,14 @@ function SceneRenderer() {
   const orthographicCamera = useRef();
   const pipScene = new THREE.Scene();
   const frameBuffer = useFBO(800, 600);
-  const pipCamera = useGameStore((state) => state.pipCamera);
+  const pipRef = useRefStore((state) => state.refs.pipCamera);
 
   useFrame(({ gl, camera, scene }) => {
     gl.autoClear = false;
 
     // Render scene from camera to a render target
     gl.setRenderTarget(frameBuffer);
-    gl.render(scene, pipCamera.current);
+    gl.render(scene, pipRef.current);
 
     // Render original scene
     gl.setRenderTarget(null);
