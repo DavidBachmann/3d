@@ -3,6 +3,7 @@ lockfileVersion: 5.4
 specifiers:
   '@hmans/controlfreak': ^0.2.0
   '@react-spring/three': ^9.6.1
+  '@react-three/cannon': ^6.5.0
   '@react-three/drei': ^9.48.1
   '@react-three/fiber': ^8.9.1
   '@types/react': ^18.0.26
@@ -11,6 +12,7 @@ specifiers:
   '@typescript-eslint/eslint-plugin': ^5.47.1
   '@typescript-eslint/parser': ^5.47.1
   '@vitejs/plugin-react': ^3.0.0
+  cannon-es: ^0.20.0
   eslint: ^8.30.0
   lamina: ^1.1.23
   leva: ^0.9.34
@@ -23,13 +25,16 @@ specifiers:
   typescript: ^4.9.3
   vite: ^4.0.0
   vite-plugin-eslint: ^1.8.1
+  zustand: ^4.1.5
 
 dependencies:
   '@hmans/controlfreak': 0.2.0
   '@react-spring/three': 9.6.1_apy442gfwftbonstkdzutj33fm
+  '@react-three/cannon': 6.5.0_ysppi7zeppu5uqvfyzmx3hyopq
   '@react-three/drei': 9.48.1_cuekctkttqjec6nzdci24egcwe
   '@react-three/fiber': 8.9.1_4tzez3c2xpzuefjrvhpyy55bva
   '@types/three': 0.146.0
+  cannon-es: 0.20.0
   lamina: 1.1.23_cuekctkttqjec6nzdci24egcwe
   leva: 0.9.34_biqbaboplfbrettd7655fr4n2y
   r3f-perf: 6.6.3_dncpuo65ihjo3hawzhgdbt6b54
@@ -38,6 +43,7 @@ dependencies:
   react-router-dom: 6.6.1_biqbaboplfbrettd7655fr4n2y
   three: 0.148.0
   three-stdlib: 2.21.1_three@0.148.0
+  zustand: 4.1.5_react@18.2.0
 
 devDependencies:
   '@types/react': 18.0.26
@@ -613,6 +619,14 @@ packages:
       fastq: 1.14.0
     dev: true
 
+  /@pmndrs/cannon-worker-api/2.3.0_three@0.148.0:
+    resolution: {integrity: sha512-XFR/IABU6uIEllocfGBV9SVakQWIYrZq/Ijk2ZYTv2jYorDebvT4cW8GWIE6UO/T/NChpI+fBTGlUs6wwZW5sg==}
+    peerDependencies:
+      three: '>=0.139'
+    dependencies:
+      three: 0.148.0
+    dev: false
+
   /@radix-ui/popper/0.1.0:
     resolution: {integrity: sha512-uzYeElL3w7SeNMuQpXiFlBhTT+JyaNMCwDfjKkrzugEcYrf5n52PHqncNdQPUtR42hJh8V9FsqyEDbDxkeNjJQ==}
     dependencies:
@@ -917,6 +931,23 @@ packages:
 
   /@react-spring/types/9.6.1:
     resolution: {integrity: sha512-POu8Mk0hIU3lRXB3bGIGe4VHIwwDsQyoD1F394OK7STTiX9w4dG3cTLljjYswkQN+hDSHRrj4O36kuVa7KPU8Q==}
+    dev: false
+
+  /@react-three/cannon/6.5.0_ysppi7zeppu5uqvfyzmx3hyopq:
+    resolution: {integrity: sha512-C3ZC0bJwQAXQtvaNMURoVLISsbHfvASLhFmZSzseAfA6vEiza8RvcVsmByTPrKxF9udDpRmN9tQgtX6DA3deYg==}
+    peerDependencies:
+      '@react-three/fiber': '>=8'
+      react: '>=18'
+      three: '>=0.139'
+    dependencies:
+      '@pmndrs/cannon-worker-api': 2.3.0_three@0.148.0
+      '@react-three/fiber': 8.9.1_4tzez3c2xpzuefjrvhpyy55bva
+      cannon-es: 0.20.0
+      cannon-es-debugger: 1.0.0_ytqjmtckqwtsjebg6ktygbfp7u
+      react: 18.2.0
+      three: 0.148.0
+    transitivePeerDependencies:
+      - typescript
     dev: false
 
   /@react-three/drei/9.48.1_cuekctkttqjec6nzdci24egcwe:
@@ -1340,6 +1371,25 @@ packages:
   /caniuse-lite/1.0.30001441:
     resolution: {integrity: sha512-OyxRR4Vof59I3yGWXws6i908EtGbMzVUi3ganaZQHmydk1iwDhRnvaPG2WaR0KcqrDFKrxVZHULT396LEPhXfg==}
     dev: true
+
+  /cannon-es-debugger/1.0.0_ytqjmtckqwtsjebg6ktygbfp7u:
+    resolution: {integrity: sha512-sE9lDOBAYFKlh+0w+cvWKwUhJef8HYnUSVPWPL0jD15MAuVRQKno4QYZSGxgOoJkMR3mQqxL4bxys2b3RSWH8g==}
+    peerDependencies:
+      cannon-es: 0.x
+      three: 0.x
+      typescript: '>=3.8'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+    dependencies:
+      cannon-es: 0.20.0
+      three: 0.148.0
+      typescript: 4.9.4
+    dev: false
+
+  /cannon-es/0.20.0:
+    resolution: {integrity: sha512-eZhWTZIkFOnMAJOgfXJa9+b3kVlvG+FX4mdkpePev/w/rP5V8NRquGyEozcjPfEoXUlb+p7d9SUcmDSn14prOA==}
+    dev: false
 
   /chalk/2.4.2:
     resolution: {integrity: sha512-Mti+f9lpJNcwF4tWV8/OrTTtF1gZi+f8FqlyAdouralcFWFQWF2+NgCHShjkCb+IFBLq9buZwE1xckQU4peSuQ==}
@@ -2773,7 +2823,6 @@ packages:
     resolution: {integrity: sha512-Uz+dTXYzxXXbsFpM86Wh3dKCxrQqUcVMxwU54orwlJjOpO3ao8L7j5lH+dWfTwgCwIuM9GQ2kvVotzYJMXTBZg==}
     engines: {node: '>=4.2.0'}
     hasBin: true
-    dev: true
 
   /update-browserslist-db/1.0.10_browserslist@4.21.4:
     resolution: {integrity: sha512-OztqDenkfFkbSG+tRxBeAnCVPckDBcvibKd35yDONx6OU8N7sqgwc7rCbkJ/WcYtVRZ4ba68d6byhC21GFh7sQ==}

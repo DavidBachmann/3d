@@ -11,9 +11,11 @@
   "dependencies": {
     "@hmans/controlfreak": "^0.2.0",
     "@react-spring/three": "^9.6.1",
+    "@react-three/cannon": "^6.5.0",
     "@react-three/drei": "^9.48.1",
     "@react-three/fiber": "^8.9.1",
     "@types/three": "^0.146.0",
+    "cannon-es": "^0.20.0",
     "lamina": "^1.1.23",
     "leva": "^0.9.34",
     "r3f-perf": "^6.6.3",
@@ -21,7 +23,8 @@
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.6.1",
     "three": "^0.148.0",
-    "three-stdlib": "^2.21.1"
+    "three-stdlib": "^2.21.1",
+    "zustand": "^4.1.5"
   },
   "devDependencies": {
     "@types/react": "^18.0.26",
