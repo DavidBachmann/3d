@@ -6,6 +6,7 @@ import {
   EnvironmentCube,
   OrbitControls,
   PivotControls,
+  Stage,
 } from "@react-three/drei";
 import { useControls } from "leva";
 import create from "zustand";
@@ -80,6 +81,10 @@ const cameraVector = new THREE.Vector3();
 const cameraOffset = new THREE.Vector3(0, -1, 1);
 const spawnPoint = new THREE.Vector3(0, 0, 0);
 
+const gravity = -9.8;
+const droneSize = 0.32;
+const droneHeight = 0.22;
+
 export const Model = forwardRef<THREE.Group, ModelProps>(
   ({ droneApi: api }, drone: MutableRefObject<THREE.Group>) => {
     const { nodes, materials } = useGLTF(
@@ -109,6 +114,9 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
       const rollInput = controller.controls.pitchRoll.value.x;
 
       const pos = drone.current.getWorldPosition(cameraVector);
+      const y = Math.abs(
+        drone.current.getWorldPosition(v).y - spawnPoint.y - droneHeight / 2
+      );
 
       // Drive propellers
       for (const propeller of propellers.current) {
@@ -133,6 +141,7 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
       // Set roll
       // "Roll" is like rolling a barrell.
       const maxRoll = 0.1;
+
       if (rolling) {
         roll.current = rollInput * maxRoll;
       }
@@ -150,6 +159,7 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
       // Set pitch
       // "Pitch" is like a dive.
       const maxPitch = 0.2;
+
       if (pitching) {
         pitch.current = pitchInput * maxPitch;
       } else {
@@ -178,18 +188,28 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
       // Lift is the only force needed
       api.applyLocalForce([0, lift.current, 0], [0, 0, 0]);
 
-      api.angularVelocity.set(pitch.current, yaw.current, roll.current);
+      // Require lift to manouvre
+      const canManouvre = y > 0.01;
+
+      if (canManouvre) {
+        api.angularVelocity.set(pitch.current, yaw.current, roll.current);
+      } else {
+        api.angularVelocity.set(0, 0, 0);
+      }
 
       // Look at drone
       camera.lookAt(cameraVector);
       camera.position.lerpVectors(pos.sub(cameraOffset), cameraVector, dt);
-      controller.update();
 
       // Update state
       mutation.lift = lift.current;
       mutation.pitch = pitch.current;
       mutation.roll = roll.current;
       mutation.yaw = yaw.current;
+      mutation.y = y;
+
+      // Update game controls
+      controller.update();
     });
 
     return (
@@ -363,7 +383,7 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
   }
 );
 
-const Ground = ({ size = 50 }) => {
+const Ground = ({ size = 16 }) => {
   const [colorMap, normalMap, roughnessMap, aoMap, displacementMap] =
     useTexture(
       [
@@ -374,7 +394,7 @@ const Ground = ({ size = 50 }) => {
         "/textures/stylized-stone-floor/stylized-stone-floor-height.png",
       ],
       (textures) => {
-        repeatTextures(textures, 50);
+        repeatTextures(textures, size);
       }
     );
 
@@ -405,15 +425,12 @@ const Ground = ({ size = 50 }) => {
 };
 
 function PhysicsWorld() {
-  const mutation = useGameStore((state) => state.mutation);
   const camera = useRef<THREE.Camera>(null);
-  const size = 0.32;
-  const height = 0.22;
 
   const [drone, droneApi] = useBox(
     () => ({
-      args: [size, height, size],
-      position: [0, height / 2, 0],
+      args: [droneSize, droneHeight, droneSize],
+      position: [0, droneHeight / 2, 0],
       mass: 0.18,
       angularDamping: 0.5,
       linearDamping: 0.6,
@@ -422,18 +439,17 @@ function PhysicsWorld() {
     useRef<THREE.Group>(null)
   );
 
-  useEffect(() =>
-    addEffect(() => {
-      if (drone.current) {
-        const y = drone.current.getWorldPosition(v).y;
-        mutation.y = Math.abs(y - spawnPoint.y - height / 2);
-      }
-    })
-  );
+  //useEffect(() =>
+  //  addEffect(() => {
+  //    if (drone.current) {
+  //const y = drone.current.getWorldPosition(v).y;
+  //mutation.y = Math.abs(y - spawnPoint.y - height / 2);
+  //    }
+  //  })
+  //);
 
   return (
     <Fragment key="physics-world">
-      <OrbitControls camera={camera.current} />
       <PerspectiveCamera
         ref={camera}
         makeDefault
@@ -479,10 +495,10 @@ function Scene() {
       <ambientLight intensity={0.4} />
       <directionalLight position={[2, 3, 0]} castShadow shadow-mapSize={1024} />
       <EnvironmentCube preset="dawn" />
-      <Physics iterations={32} size={10} gravity={[0, -9.8, 0]}>
-        <Debug>
-          <PhysicsWorld />
-        </Debug>
+      <Physics iterations={32} size={10} gravity={[0, gravity, 0]}>
+        {/*<Debug>*/}
+        <PhysicsWorld />
+        {/*</Debug>*/}
       </Physics>
     </Fragment>
   );
