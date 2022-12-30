@@ -32,12 +32,11 @@ import {
 import { createPortal, useFrame, useThree } from "@react-three/fiber";
 import { repeatTextures } from "../utils/repeatTexture";
 import { controller } from "../controller";
-import { clamp } from "../utils/clamp";
 import { CameraHelper } from "three";
 
 const useGameStore = create(() => ({
   mutation: {
-    y: 0,
+    altitude: 0,
     battery: 100,
     lift: 0,
     yaw: 0,
@@ -119,6 +118,20 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
 
     useHelper(droneCamera, CameraHelper);
 
+    const scale = (
+      inputY: number,
+      yRange: Array<number>,
+      xRange: Array<number>
+    ): number => {
+      const [xMin, xMax] = xRange;
+      const [yMin, yMax] = yRange;
+
+      const percent = (inputY - yMin) / (yMax - yMin);
+      const outputX = percent * (xMax - xMin) + xMin;
+
+      return outputX;
+    };
+
     useFrame((_, dt) => {
       const throttling = controller.controls.throttling.value;
       const pitching = controller.controls.pitching.value;
@@ -130,9 +143,10 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
       const rollInput = controller.controls.pitchRoll.value.x;
 
       const pos = drone.current.getWorldPosition(cameraVector);
-      const y = Math.abs(
+      const altitude = Math.abs(
         drone.current.getWorldPosition(v).y - spawnPoint.y - droneHeight / 2
       );
+      const outOfBattery = mutation.battery === 0;
 
       // Drive propellers
       for (const propeller of propellers.current) {
@@ -140,46 +154,64 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
           break;
         }
 
-        propeller.rotation.y += Math.min(0.35 * lift.current, 4);
+        if (!outOfBattery) {
+          propeller.rotation.y += Math.min(0.35 * lift.current, 4);
+        }
       }
 
-      // Set lift
-      const liftRequired = 1.85;
-      if (throttling) {
+      // stableLift makes the drone hover still
+      const stableLift = 1.764;
+      // ampleLift makes the drone lift swiftly
+      const ampleLift = 1.9;
+
+      const batteryEmptyLift = stableLift - 0.015;
+
+      // Scale lift from 1.85 to 1.75 when battery is from 100% to 0%
+      const scaledAmpleLift = scale(
+        mutation.battery,
+        [100, 0],
+        [ampleLift, batteryEmptyLift]
+      );
+
+      // Scale lift force from stable to ample by altitude
+      const scaledLift = scale(
+        mutation.altitude,
+        [2, 0],
+        [stableLift, scaledAmpleLift]
+      );
+
+      if (throttling && !outOfBattery) {
         // Drain the batteries
-        mutation.battery -= 0.01;
+        mutation.battery = Math.max(mutation.battery - 0.1, 0);
+
         // Gradually increase lift if throttling
-        lift.current = clamp(thrustInput * liftRequired, liftRequired, 0);
+        lift.current = scaledLift;
       } else {
         lift.current = Math.max(0, (lift.current -= 0.02));
       }
 
       // Set roll
       // "Roll" is like rolling a barrell.
-      const maxRoll = 0.1;
+      const maxRoll = 1;
 
       if (rolling) {
         roll.current = rollInput * maxRoll;
-      }
-
-      if (!rolling) {
-        if (roll.current > 0) {
-          roll.current = Math.max(0, roll.current - 0.02);
-        } else if (roll.current < 0) {
-          roll.current = Math.min(0, roll.current + 0.02);
+      } else {
+        if (Math.sign(roll.current) === -1) {
+          roll.current = Math.min(0, roll.current + 0.05);
         } else {
-          roll.current = 0;
+          roll.current = Math.max(0, roll.current - 0.05);
         }
       }
 
       // Set pitch
       // "Pitch" is like a dive.
-      const maxPitch = 0.2;
+      const maxPitch = 1;
 
       if (pitching) {
         pitch.current = pitchInput * maxPitch;
       } else {
-        // Gradually decrease pitch
+        // Gradually level off pitch
         if (Math.sign(pitch.current) === -1) {
           pitch.current = Math.min((pitch.current += 0.05), 0);
         } else {
@@ -189,11 +221,12 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
 
       // Set yaw
       // "Yaw" is like looking around.
-      const maxYaw = 1.2;
+      const maxYaw = 1;
+
       if (yawing) {
         yaw.current = yawInput * maxYaw;
       } else {
-        // Gradually decrease pitch
+        // Gradually level off yaw
         if (Math.sign(yaw.current) === -1) {
           yaw.current = Math.min((yaw.current += 0.05), 0);
         } else {
@@ -201,17 +234,21 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
         }
       }
 
+      const canManouvre = altitude > 0.01;
+
+      if (canManouvre) {
+        api.angularVelocity.set(0, yaw.current, 0);
+      }
+
       // Lift is the only force needed
       api.applyLocalForce([0, lift.current, 0], [0, 0, 0]);
 
-      // Require lift to manouvre
-      const canManouvre = y > 0.01;
-
-      if (canManouvre) {
-        api.angularVelocity.set(pitch.current, yaw.current, roll.current);
-      } else {
-        api.angularVelocity.set(0, 0, 0);
-      }
+      const torqueScale = 0.1;
+      api.applyTorque([
+        pitch.current * torqueScale,
+        0, // Using angular velocity for yaw
+        roll.current * torqueScale,
+      ]);
 
       // Look at drone
       camera.lookAt(cameraVector);
@@ -222,7 +259,7 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
       mutation.pitch = pitch.current;
       mutation.roll = roll.current;
       mutation.yaw = yaw.current;
-      mutation.y = y;
+      mutation.altitude = altitude;
 
       // Update game controls
       controller.update();
@@ -448,8 +485,8 @@ function PhysicsWorld() {
   const pipState = usePipStore((state) => state.mutation);
 
   const [_, update] = useControls(() => ({
-    droneY: mutation.y,
-    droneBattery: mutation.battery,
+    altitude: mutation.altitude,
+    battery: mutation.battery,
     droneCamera: {
       value: pipState.isActive,
       onChange: (val) => {
@@ -465,8 +502,8 @@ function PhysicsWorld() {
   useEffect(() => {
     const id = setInterval(() => {
       update({
-        droneY: mutation.y,
-        droneBattery: mutation.battery,
+        altitude: mutation.altitude,
+        battery: mutation.battery,
         lift: mutation.lift,
         yaw: mutation.yaw,
         roll: mutation.roll,
@@ -510,7 +547,7 @@ function PhysicsDebug({
 
 function Scene() {
   const [state] = useControls(() => ({
-    physicsDebug: true,
+    physicsDebug: false,
   }));
 
   return (
@@ -524,8 +561,7 @@ function Scene() {
       <SceneRenderer />
       <Physics
         iterations={5}
-        size={2}
-        maxSubSteps={10}
+        size={5}
         gravity={[0, gravity, 0]}
         allowSleep={false}
       >
@@ -540,7 +576,7 @@ function Scene() {
 function SceneRenderer() {
   const orthographicCamera = useRef();
   const pipScene = new THREE.Scene();
-  const frameBuffer = useFBO(800, 600);
+  const frameBuffer = useFBO();
   const pipRef = usePipStore((state) => state.camera);
   const pipState = usePipStore((state) => state.mutation);
 
