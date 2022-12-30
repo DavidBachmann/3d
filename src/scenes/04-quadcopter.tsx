@@ -11,6 +11,7 @@ import {
 } from "@react-three/drei";
 import { useControls } from "leva";
 import create from "zustand";
+import { subscribeWithSelector } from "zustand/middleware";
 import {
   forwardRef,
   Fragment,
@@ -45,9 +46,10 @@ const useGameStore = create(() => ({
   },
 }));
 
-const useRefStore = create(() => ({
-  refs: {
-    pipCamera: null,
+const usePipStore = create(() => ({
+  camera: null,
+  mutation: {
+    isActive: true,
   },
 }));
 
@@ -110,12 +112,9 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
     const roll = useRef(0);
 
     useLayoutEffect(() => {
-      useRefStore.setState((prev) => ({
-        refs: {
-          ...prev.refs,
-          pipCamera: droneCamera,
-        },
-      }));
+      usePipStore.setState({
+        camera: droneCamera,
+      });
     });
 
     useHelper(droneCamera, CameraHelper);
@@ -190,7 +189,7 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
 
       // Set yaw
       // "Yaw" is like looking around.
-      const maxYaw = 1.4;
+      const maxYaw = 1.2;
       if (yawing) {
         yaw.current = yawInput * maxYaw;
       } else {
@@ -448,9 +447,17 @@ const Ground = ({ size = 16 }) => {
 
 function PhysicsWorld() {
   const mutation = useGameStore((state) => state.mutation);
+  const pipState = usePipStore((state) => state.mutation);
+
   const [_, update] = useControls(() => ({
     droneY: mutation.y,
     droneBattery: mutation.battery,
+    droneCamera: {
+      value: pipState.isActive,
+      onChange: (val) => {
+        pipState.isActive = val;
+      },
+    },
     lift: mutation.lift,
     yaw: mutation.yaw,
     roll: mutation.roll,
@@ -466,6 +473,7 @@ function PhysicsWorld() {
         yaw: mutation.yaw,
         roll: mutation.roll,
         pitch: mutation.pitch,
+        droneCamera: pipState.isActive,
       });
     }, 100);
 
@@ -514,7 +522,8 @@ function SceneRenderer() {
   const orthographicCamera = useRef();
   const pipScene = new THREE.Scene();
   const frameBuffer = useFBO(800, 600);
-  const pipRef = useRefStore((state) => state.refs.pipCamera);
+  const pipRef = usePipStore((state) => state.camera);
+  const pipState = usePipStore((state) => state.mutation);
 
   useFrame(({ gl, camera, scene }) => {
     gl.autoClear = false;
@@ -527,10 +536,10 @@ function SceneRenderer() {
     gl.setRenderTarget(null);
     gl.render(scene, camera);
 
-    // Render PIP scene
-    gl.render(pipScene, orthographicCamera.current);
-
-    gl.autoClear = true;
+    if (pipState.isActive) {
+      // Render PIP scene
+      gl.render(pipScene, orthographicCamera.current);
+    }
   }, 1);
 
   const r = window.innerWidth / window.innerHeight;
