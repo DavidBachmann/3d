@@ -1,3 +1,4 @@
+import * as THREE from "three";
 import {
   PerspectiveCamera,
   useGLTF,
@@ -8,11 +9,14 @@ import {
 } from "@react-three/drei";
 import { useControls } from "leva";
 import create from "zustand";
-import { forwardRef, Fragment, useEffect, useRef } from "react";
-import { GLTF } from "three-stdlib/loaders/GLTFLoader";
-import * as THREE from "three";
-import { addEffect, useFrame, useThree } from "@react-three/fiber";
-import { repeatTextures } from "../utils/repeatTexture";
+import {
+  forwardRef,
+  Fragment,
+  MutableRefObject,
+  useEffect,
+  useRef,
+} from "react";
+import { GLTF } from "three-stdlib";
 import {
   Debug,
   Physics,
@@ -21,13 +25,19 @@ import {
   useBox,
   usePlane,
 } from "@react-three/cannon";
+import { addEffect, useFrame, useThree } from "@react-three/fiber";
+import { repeatTextures } from "../utils/repeatTexture";
 import { controller } from "../controller";
 import { clamp } from "../utils/clamp";
 
 const useGameStore = create(() => ({
   mutation: {
-    lift: 0,
+    y: 0,
     battery: 100,
+    lift: 0,
+    yaw: 0,
+    pitch: 0,
+    roll: 0,
   },
 }));
 
@@ -65,12 +75,13 @@ type ModelProps = {
   droneApi: PublicApi;
 };
 
+const v = new THREE.Vector3();
 const cameraVector = new THREE.Vector3();
 const cameraOffset = new THREE.Vector3(0, -1, 1);
 const spawnPoint = new THREE.Vector3(0, 0, 0);
 
 export const Model = forwardRef<THREE.Group, ModelProps>(
-  ({ droneApi: api }, drone) => {
+  ({ droneApi: api }, drone: MutableRefObject<THREE.Group>) => {
     const { nodes, materials } = useGLTF(
       "/gltfs/quadcopter.gltf"
     ) as unknown as GLTFResult;
@@ -87,7 +98,7 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
       pivotControls: false,
     });
 
-    useFrame((state, dt) => {
+    useFrame((_, dt) => {
       const throttling = controller.controls.throttling.value;
       const pitching = controller.controls.pitching.value;
       const rolling = controller.controls.rolling.value;
@@ -109,7 +120,7 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
       }
 
       // Set lift
-      const liftRequired = 2;
+      const liftRequired = 1.85;
       if (throttling) {
         // Drain the batteries
         mutation.battery -= 0.01;
@@ -150,22 +161,35 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
         }
       }
 
-      //console.log(pitch.current);
-
       // Set yaw
       // "Yaw" is like looking around.
-      yaw.current = yawInput;
+      const maxYaw = 1.4;
+      if (yawing) {
+        yaw.current = yawInput * maxYaw;
+      } else {
+        // Gradually decrease pitch
+        if (Math.sign(yaw.current) === -1) {
+          yaw.current = Math.min((yaw.current += 0.05), 0);
+        } else {
+          yaw.current = Math.max((yaw.current -= 0.05), 0);
+        }
+      }
 
       // Lift is the only force needed
       api.applyLocalForce([0, lift.current, 0], [0, 0, 0]);
 
-      //api.angularVelocity.set(pitch.current, yaw.current, roll.current);
       api.angularVelocity.set(pitch.current, yaw.current, roll.current);
 
       // Look at drone
       camera.lookAt(cameraVector);
       camera.position.lerpVectors(pos.sub(cameraOffset), cameraVector, dt);
       controller.update();
+
+      // Update state
+      mutation.lift = lift.current;
+      mutation.pitch = pitch.current;
+      mutation.roll = roll.current;
+      mutation.yaw = yaw.current;
     });
 
     return (
@@ -381,32 +405,28 @@ const Ground = ({ size = 50 }) => {
 };
 
 function PhysicsWorld() {
+  const mutation = useGameStore((state) => state.mutation);
   const camera = useRef<THREE.Camera>(null);
-  const size = 0.45;
+  const size = 0.32;
   const height = 0.22;
-  const test = new THREE.Vector3();
 
   const [drone, droneApi] = useBox(
     () => ({
       args: [size, height, size],
       position: [0, height / 2, 0],
       mass: 0.18,
-      angularDamping: 0.9,
+      angularDamping: 0.5,
       linearDamping: 0.6,
       fixedRotation: false,
     }),
     useRef<THREE.Group>(null)
   );
 
-  const { mutation } = useGameStore();
-
   useEffect(() =>
     addEffect(() => {
       if (drone.current) {
-        const y = drone.current.getWorldPosition(test).y;
-        mutation.lift = parseFloat(
-          String(Math.abs(y - spawnPoint.y - height / 2))
-        ).toFixed(2);
+        const y = drone.current.getWorldPosition(v).y;
+        mutation.y = Math.abs(y - spawnPoint.y - height / 2);
       }
     })
   );
@@ -429,13 +449,24 @@ function PhysicsWorld() {
 function Scene() {
   const mutation = useGameStore((state) => state.mutation);
   const [_, update] = useControls(() => ({
-    droneLift: mutation.lift,
+    droneY: mutation.y,
     droneBattery: mutation.battery,
+    lift: mutation.lift,
+    yaw: mutation.yaw,
+    roll: mutation.roll,
+    pitch: mutation.pitch,
   }));
 
   useEffect(() => {
     const id = setInterval(() => {
-      update({ droneLift: mutation.lift, droneBattery: mutation.battery });
+      update({
+        droneY: mutation.y,
+        droneBattery: mutation.battery,
+        lift: mutation.lift,
+        yaw: mutation.yaw,
+        roll: mutation.roll,
+        pitch: mutation.pitch,
+      });
     }, 100);
 
     return () => clearTimeout(id);
@@ -449,7 +480,9 @@ function Scene() {
       <directionalLight position={[2, 3, 0]} castShadow shadow-mapSize={1024} />
       <EnvironmentCube preset="dawn" />
       <Physics iterations={32} size={10} gravity={[0, -9.8, 0]}>
-        <PhysicsWorld />
+        <Debug>
+          <PhysicsWorld />
+        </Debug>
       </Physics>
     </Fragment>
   );
