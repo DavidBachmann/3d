@@ -3,15 +3,12 @@ import {
   PerspectiveCamera,
   useGLTF,
   useTexture,
-  EnvironmentCube,
-  OrbitControls,
   PivotControls,
-  Stage,
   Environment,
-  RenderTexture,
   useFBO,
   OrthographicCamera,
   Plane,
+  useHelper,
 } from "@react-three/drei";
 import { useControls } from "leva";
 import create from "zustand";
@@ -20,6 +17,7 @@ import {
   Fragment,
   MutableRefObject,
   useEffect,
+  useLayoutEffect,
   useRef,
 } from "react";
 import { GLTF } from "three-stdlib";
@@ -31,15 +29,11 @@ import {
   useBox,
   usePlane,
 } from "@react-three/cannon";
-import {
-  addEffect,
-  createPortal,
-  useFrame,
-  useThree,
-} from "@react-three/fiber";
+import { createPortal, useFrame, useThree } from "@react-three/fiber";
 import { repeatTextures } from "../utils/repeatTexture";
 import { controller } from "../controller";
 import { clamp } from "../utils/clamp";
+import { CameraHelper } from "three";
 
 const useGameStore = create(() => ({
   pipCamera: null,
@@ -102,6 +96,7 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
       "/gltfs/quadcopter.gltf"
     ) as unknown as GLTFResult;
     const mutation = useGameStore((state) => state.mutation);
+    const droneCamera = useRef<THREE.PerspectiveCamera>(null);
     const camera = useThree((state) => state.camera);
     const propellers = useRef<THREE.Mesh[]>([]);
 
@@ -109,6 +104,12 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
     const pitch = useRef(0);
     const yaw = useRef(0);
     const roll = useRef(0);
+
+    useLayoutEffect(() => {
+      useGameStore.setState({ pipCamera: droneCamera });
+    });
+
+    useHelper(droneCamera, CameraHelper);
 
     const { pivotControls } = useControls({
       pivotControls: false,
@@ -236,7 +237,14 @@ export const Model = forwardRef<THREE.Group, ModelProps>(
               material={materials["drone-propeller-material"]}
               position={[0.2867, 0.0504, -0.2463]}
             />
-
+            <PerspectiveCamera
+              ref={droneCamera}
+              fov={60}
+              position={[0, 0, droneSize]}
+              rotation={[Math.PI, 0, Math.PI]}
+              near={0.01}
+              far={10}
+            />
             <group
               name="drone-body"
               position={[0.0065, 0.0228, 0.1]}
@@ -447,16 +455,6 @@ function PhysicsWorld() {
     }),
     useRef<THREE.Group>(null)
   );
-
-  //useEffect(() =>
-  //  addEffect(() => {
-  //    if (drone.current) {
-  //const y = drone.current.getWorldPosition(v).y;
-  //mutation.y = Math.abs(y - spawnPoint.y - height / 2);
-  //    }
-  //  })
-  //);
-
   return (
     <Fragment key="physics-world">
       <Model ref={drone} droneApi={droneApi} />
@@ -466,7 +464,6 @@ function PhysicsWorld() {
 }
 
 function Scene() {
-  const perspectiveCamera = useRef(null);
   const mutation = useGameStore((state) => state.mutation);
   const [_, update] = useControls(() => ({
     droneY: mutation.y,
@@ -478,8 +475,6 @@ function Scene() {
   }));
 
   useEffect(() => {
-    useGameStore.setState({ pipCamera: perspectiveCamera });
-
     const id = setInterval(() => {
       update({
         droneY: mutation.y,
@@ -500,45 +495,33 @@ function Scene() {
       <fogExp2 attach="fog" color={0xf3f6fb} density={0.1} />
       <ambientLight intensity={0.8} />
       <directionalLight position={[2, 3, 0]} castShadow shadow-mapSize={1024} />
-      <PerspectiveCamera
-        ref={perspectiveCamera}
-        makeDefault
-        fov={70}
-        position={[0, 0, 0]}
-      />
+      <PerspectiveCamera makeDefault fov={70} position={[0, 0, 0]} />
       <Environment preset="sunset" />
       <SceneRenderer />
       <Physics iterations={32} size={10} gravity={[0, gravity, 0]}>
-        <Debug>
-          <PhysicsWorld />
-        </Debug>
+        {/*<Debug>*/}
+        <PhysicsWorld />
+        {/*</Debug>*/}
       </Physics>
     </Fragment>
   );
 }
 
 function SceneRenderer() {
-  const frameBuffer = useFBO(window.innerWidth / 4, window.innerHeight / 4);
-
-  const pipCamera = useGameStore((state) => state.pipCamera);
-
-  const pipScene = new THREE.Scene();
   const orthographicCamera = useRef();
-
-  // just to make component re-render on canvas size change
-  useThree();
+  const pipScene = new THREE.Scene();
+  const frameBuffer = useFBO(800, 600);
+  const pipCamera = useGameStore((state) => state.pipCamera);
 
   useFrame(({ gl, camera, scene }) => {
     gl.autoClear = false;
 
-    /** Render scene from camera to a render target */
+    // Render scene from camera to a render target
     gl.setRenderTarget(frameBuffer);
     gl.render(scene, pipCamera.current);
 
-    // render main scene
-    gl.setRenderTarget(null);
-
     // Render original scene
+    gl.setRenderTarget(null);
     gl.render(scene, camera);
 
     // Render PIP scene
@@ -548,20 +531,21 @@ function SceneRenderer() {
   }, 1);
 
   const r = window.innerWidth / window.innerHeight;
-  const SIZE = 200;
+  const SIZE = 300;
+  const MARGIN = 10;
 
   return createPortal(
-    <>
-      <OrthographicCamera ref={orthographicCamera} near={0.0001} far={1} />
+    <Fragment key="pip-scene">
+      <OrthographicCamera ref={orthographicCamera} near={0.001} far={1} />
       <group
         position-z={-0.1}
-        position-x={-window.innerWidth / 2 + (SIZE * r) / 2}
+        position-x={-window.innerWidth / 2 + SIZE / 2 + MARGIN}
       >
         <Plane args={[SIZE, SIZE / r, 1]} position-y={0}>
           <meshBasicMaterial map={frameBuffer.texture} />
         </Plane>
       </group>
-    </>,
+    </Fragment>,
     pipScene
   );
 }
