@@ -88,7 +88,7 @@ const useGameStore = create(() => ({
 const usePipStore = create(() => ({
   camera: null,
   mutation: {
-    isActive: true,
+    isActive: false,
   },
 }));
 
@@ -146,6 +146,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
     const batteryShaderMaterial = useRef<any>(null);
     const camera = useThree((state) => state.camera);
     const propellers = useRef<THREE.Mesh[]>([]);
+    const pipState = usePipStore((state) => state.mutation);
 
     const lift = useRef(0);
     const pitch = useRef(0);
@@ -158,7 +159,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
       });
     });
 
-    useHelper(droneCamera, THREE.CameraHelper);
+    useHelper(pipState.isActive ? droneCamera : null, THREE.CameraHelper);
 
     useFrame((_, dt) => {
       // Get controls
@@ -198,7 +199,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
       const stableLift = 1.764;
       // ampleLift makes the drone lift swiftly
       const ampleLift = 1.9;
-
+      // when the battery is empty it just barely doesn't provide lift
       const batteryEmptyLift = stableLift - 0.015;
 
       // Scale lift with battery percentage
@@ -256,7 +257,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
 
       // Set yaw
       // "Yaw" is like looking around.
-      const maxYaw = 1;
+      const maxYaw = 0.5;
 
       if (yawing) {
         yaw.current = yawInput * maxYaw;
@@ -591,7 +592,7 @@ function Scene() {
   return (
     <Fragment key="04">
       <color attach="background" args={[0xf3f6fb]} />
-      <fogExp2 attach="fog" color={0xf3f6fb} density={0.1} />
+      <fogExp2 attach="fog" color={0xf3f6fb} density={0.05} />
       <ambientLight intensity={0.8} />
       <directionalLight position={[2, 3, 0]} castShadow shadow-mapSize={1024} />
       <PerspectiveCamera makeDefault fov={70} position={[0, 0, 0]} />
