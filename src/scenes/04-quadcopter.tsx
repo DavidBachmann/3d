@@ -26,6 +26,7 @@ import {
   Debug,
   Physics,
   PublicApi,
+  Quad,
   Triplet,
   useBox,
   usePlane,
@@ -127,7 +128,9 @@ type ModelProps = {
   droneApi: PublicApi;
 };
 
-const v = new THREE.Vector3();
+const unitVector = new THREE.Vector3();
+const unitQuaternion = new THREE.Quaternion();
+const worldVector = new THREE.Vector3();
 const cameraVector = new THREE.Vector3();
 const cameraOffset = new THREE.Vector3(0, -1, 1);
 const spawnPoint = new THREE.Vector3(0, 0, 0);
@@ -153,11 +156,15 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
     const yaw = useRef(0);
     const roll = useRef(0);
 
+    const quaternion = useRef<Quad>([0, 0, 0, 1]);
+
     useLayoutEffect(() => {
       usePipStore.setState({
         camera: droneCamera,
       });
     });
+
+    api.quaternion.subscribe((val) => (quaternion.current = val));
 
     useHelper(pipState.isActive ? droneCamera : null, THREE.CameraHelper);
 
@@ -180,7 +187,9 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
 
       const pos = drone.current.getWorldPosition(cameraVector);
       const altitude = Math.abs(
-        drone.current.getWorldPosition(v).y - spawnPoint.y - droneHeight / 2
+        drone.current.getWorldPosition(worldVector).y -
+          spawnPoint.y -
+          droneHeight / 2
       );
       const outOfBattery = mutation.battery === 0;
 
@@ -270,21 +279,27 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
         }
       }
 
+      // Lift is the only force needed
+      api.applyLocalForce([0, lift.current, 0], [0, 0, 0]);
+
       const canManouvre = altitude > 0.01;
 
       if (canManouvre) {
         api.angularVelocity.set(0, yaw.current, 0);
       }
 
-      // Lift is the only force needed
-      api.applyLocalForce([0, lift.current, 0], [0, 0, 0]);
-
       const torqueScale = 0.1;
-      api.applyTorque([
+
+      const qc = quaternion.current;
+      const q = unitQuaternion.set(qc[0], qc[1], qc[2], qc[3]);
+      const v = unitVector.set(
         pitch.current * torqueScale,
-        0, // Using angular velocity for yaw
-        roll.current * torqueScale,
-      ]);
+        0,
+        roll.current * torqueScale
+      );
+
+      v.applyQuaternion(q);
+      api.applyTorque(v.toArray());
 
       // Look at drone
       camera.lookAt(cameraVector);
