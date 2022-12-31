@@ -8,7 +8,6 @@ import {
   OrthographicCamera,
   Plane,
   useHelper,
-  shaderMaterial,
 } from "@react-three/drei";
 import { useControls } from "leva";
 import create from "zustand";
@@ -36,43 +35,9 @@ import { repeatTextures } from "../utils/repeatTexture";
 import { controller } from "../controller";
 import { scale } from "../utils/scale";
 import { clamp } from "../utils/clamp";
+import { batteryShaderMaterial as BatteryShaderMaterial } from "../shaders/battery";
 
-const batteryVertexShader = `
-  varying vec2 vUv;
-
-  void main() {
-    vec4 modelPosition = modelMatrix * vec4(position, 1.0);
-    vec4 viewPosition = viewMatrix * modelPosition;
-    vec4 projectionPosition = projectionMatrix * viewPosition;
-
-    gl_Position = projectionPosition;
-
-    vUv = uv;
-  }
-`;
-
-const batteryFragmentShader = `
-  uniform float uBatteryPercentage;
-
-  varying vec2 vUv;
-
-  vec3 red = vec3(1.0, 0.0, 0.0);
-  vec3 green = vec3(0.0, 1.0, 0.0);
-
-  void main() {
-    gl_FragColor = vec4(mix(red, green, uBatteryPercentage), 1.0);
-  }
-`;
-
-const BatteryShaderMaterial = shaderMaterial(
-  {
-    uBatteryPercentage: 1,
-  },
-  batteryVertexShader,
-  batteryFragmentShader
-);
-
-// Make shader material available as jsx element
+// Make battery shader available as jsx element
 extend({ BatteryShaderMaterial });
 
 const useGameStore = create(() => ({
@@ -135,9 +100,19 @@ const cameraVector = new THREE.Vector3();
 const cameraOffset = new THREE.Vector3(0, -1, 1);
 const spawnPoint = new THREE.Vector3(0, 0, 0);
 
-const gravity = -9.8;
-const droneSize = 0.32;
-const droneHeight = 0.4;
+const constants = {
+  maxAltitude: 2.5,
+  gravity: -9.8,
+  droneSize: 0.32,
+  droneHeight: 0.4,
+  droneMass: 0.18,
+  droneStableLift: 1.764,
+};
+
+// ampleLift makes the drone lift swiftly
+const droneAmpleLift = constants.droneStableLift * 1.2;
+// when the battery is empty it just barely doesn't provide lift
+const droneBatteryEmptyLift = constants.droneStableLift - 0.015;
 
 const Drone = forwardRef<THREE.Group, ModelProps>(
   ({ droneApi: api }, drone: MutableRefObject<THREE.Group>) => {
@@ -189,7 +164,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
       const altitude = Math.abs(
         drone.current.getWorldPosition(worldVector).y -
           spawnPoint.y -
-          droneHeight / 2
+          constants.droneHeight / 2
       );
       const outOfBattery = mutation.battery === 0;
 
@@ -204,25 +179,18 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
         }
       }
 
-      // stableLift makes the drone hover still
-      const stableLift = 1.764;
-      // ampleLift makes the drone lift swiftly
-      const ampleLift = 1.9;
-      // when the battery is empty it just barely doesn't provide lift
-      const batteryEmptyLift = stableLift - 0.015;
-
       // Scale lift with battery percentage
       const scaledAmpleLift = scale(
         mutation.battery,
         [100, 0],
-        [ampleLift, batteryEmptyLift]
+        [droneAmpleLift, droneBatteryEmptyLift]
       );
 
       // Scale lift force from stable to ample by altitude
       const scaledLift = scale(
         mutation.altitude,
-        [2, 0],
-        [stableLift, scaledAmpleLift]
+        [constants.maxAltitude, 0],
+        [constants.droneStableLift, scaledAmpleLift]
       );
 
       if (throttling && !outOfBattery) {
@@ -266,7 +234,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
 
       // Set yaw
       // "Yaw" is like looking around.
-      const maxYaw = 0.5;
+      const maxYaw = 1;
 
       if (yawing) {
         yaw.current = yawInput * maxYaw;
@@ -290,6 +258,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
 
       const torqueScale = 0.1;
 
+      // Correct for rotation
       const qc = quaternion.current;
       const q = unitQuaternion.set(qc[0], qc[1], qc[2], qc[3]);
       const v = unitVector.set(
@@ -317,12 +286,12 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
     });
 
     return (
-      <group dispose={null} scale={0.65} ref={drone}>
+      <group dispose={null} scale={0.6} ref={drone}>
         <group position={[0, 0, 0]}>
           <PerspectiveCamera
             ref={droneCamera}
             fov={60}
-            position={[0, 0, droneSize]}
+            position={[0, 0, constants.droneSize]}
             rotation={[Math.PI, 0, Math.PI]}
             near={0.01}
             far={10}
@@ -575,13 +544,13 @@ function PhysicsWorld() {
 
   const [drone, droneApi] = useBox(
     () => ({
-      args: [droneSize, droneHeight, droneSize],
-      position: [0, droneHeight, 0],
+      args: [constants.droneSize, constants.droneHeight, constants.droneSize],
+      position: [0, constants.droneHeight, 0],
       material: {
         friction: 0.2,
         restitution: 1,
       },
-      mass: 0.18,
+      mass: constants.droneMass,
       angularDamping: 0,
       linearDamping: 0.5,
       fixedRotation: false,
@@ -617,15 +586,21 @@ function Scene() {
       <color attach="background" args={[0xf3f6fb]} />
       <fogExp2 attach="fog" color={0xf3f6fb} density={0.05} />
       <ambientLight intensity={0.8} />
-      <directionalLight position={[2, 3, 0]} castShadow shadow-mapSize={1024} />
+      <directionalLight
+        position={[2, 10, 0]}
+        castShadow
+        shadow-mapSize={1024}
+      />
       <PerspectiveCamera makeDefault fov={70} position={[0, 0, 0]} />
-      <Environment preset="sunset" />
+      <Environment preset="forest" />
       <SceneRenderer />
       <Physics
-        iterations={5}
-        size={5}
-        gravity={[0, gravity, 0]}
-        allowSleep={false}
+        defaultContactMaterial={{
+          contactEquationStiffness: 1e9,
+        }}
+        broadphase="SAP"
+        gravity={[0, constants.gravity, 0]}
+        allowSleep={true}
       >
         <PhysicsDebug debug={state.physicsDebug}>
           <PhysicsWorld />
