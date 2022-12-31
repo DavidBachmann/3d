@@ -15,7 +15,6 @@ import {
   forwardRef,
   Fragment,
   MutableRefObject,
-  ReactNode,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -292,7 +291,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
         <group position={[0, 0, 0]}>
           <PerspectiveCamera
             ref={droneCamera}
-            fov={60}
+            fov={70}
             position={[0, 0, constants.droneSize]}
             rotation={[Math.PI, 0, Math.PI]}
             near={0.01}
@@ -567,22 +566,7 @@ function PhysicsWorld() {
   );
 }
 
-function PhysicsDebug({
-  debug = false,
-  children,
-}: {
-  debug?: boolean;
-  children: ReactNode;
-}) {
-  const Noop = ({ children }) => <>{children}</>;
-  return debug ? <Debug>{children}</Debug> : <Noop>{children}</Noop>;
-}
-
 function Scene() {
-  const [state] = useControls(() => ({
-    physicsDebug: false,
-  }));
-
   return (
     <Fragment key="04">
       <color attach="background" args={[0xf3f6fb]} />
@@ -600,13 +584,17 @@ function Scene() {
         defaultContactMaterial={{
           contactEquationStiffness: 1e9,
         }}
+        iterations={50}
+        tolerance={0}
+        maxSubSteps={20}
+        stepSize={1 / 60}
         broadphase="SAP"
         gravity={[0, constants.gravity, 0]}
         allowSleep={true}
       >
-        <PhysicsDebug debug={state.physicsDebug}>
-          <PhysicsWorld />
-        </PhysicsDebug>
+        {/*<Debug>*/}
+        <PhysicsWorld />
+        {/*</Debug>*/}
       </Physics>
     </Fragment>
   );
