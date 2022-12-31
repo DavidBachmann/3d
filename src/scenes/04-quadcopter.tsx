@@ -105,14 +105,11 @@ const constants = {
   gravity: -9.8,
   droneSize: 0.32,
   droneHeight: 0.4,
-  droneMass: 0.18,
-  droneStableLift: 1.764,
+  droneMass: 0.2,
+  droneAmpleLift: 2.4,
+  droneStableLift: 1.96,
+  droneBatteryEmptyLift: 1.915,
 };
-
-// ampleLift makes the drone lift swiftly
-const droneAmpleLift = constants.droneStableLift * 1.2;
-// when the battery is empty it just barely doesn't provide lift
-const droneBatteryEmptyLift = constants.droneStableLift - 0.015;
 
 const Drone = forwardRef<THREE.Group, ModelProps>(
   ({ droneApi: api }, drone: MutableRefObject<THREE.Group>) => {
@@ -179,23 +176,28 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
         }
       }
 
-      // Scale lift with battery percentage
+      // Scale ample and stable lifts with battery percentage
       const scaledAmpleLift = scale(
         mutation.battery,
         [100, 0],
-        [droneAmpleLift, droneBatteryEmptyLift]
+        [constants.droneAmpleLift, constants.droneBatteryEmptyLift]
+      );
+      const scaledStableLift = scale(
+        mutation.battery,
+        [100, 0],
+        [constants.droneStableLift, constants.droneBatteryEmptyLift]
       );
 
       // Scale lift force from stable to ample by altitude
       const scaledLift = scale(
         mutation.altitude,
         [constants.maxAltitude, 0],
-        [constants.droneStableLift, scaledAmpleLift]
+        [scaledStableLift, scaledAmpleLift]
       );
 
       if (throttling && !outOfBattery) {
         // Drain the batteries
-        mutation.battery = Math.max(mutation.battery - 0.05, 0);
+        mutation.battery = Math.max(mutation.battery - 0.02, 0);
 
         // Gradually increase lift if throttling
         lift.current = scaledLift;
