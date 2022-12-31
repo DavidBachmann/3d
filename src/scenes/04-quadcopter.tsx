@@ -515,6 +515,10 @@ const Ground = ({ size = 16 }) => {
 
   const [ref] = usePlane(
     () => ({
+      material: {
+        friction: 0.5,
+        restitution: 0.5,
+      },
       position: position.toArray() as Triplet,
       rotation: rotation.toArray() as Triplet,
     }),
@@ -573,9 +577,13 @@ function PhysicsWorld() {
     () => ({
       args: [droneSize, droneHeight, droneSize],
       position: [0, droneHeight, 0],
+      material: {
+        friction: 0.2,
+        restitution: 1,
+      },
       mass: 0.18,
-      angularDamping: 0.5,
-      linearDamping: 0.6,
+      angularDamping: 0,
+      linearDamping: 0.5,
       fixedRotation: false,
     }),
     useRef<THREE.Group>(null)
