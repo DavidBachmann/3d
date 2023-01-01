@@ -7,7 +7,6 @@ import {
   useFBO,
   OrthographicCamera,
   Plane,
-  useHelper,
 } from "@react-three/drei";
 import { useControls } from "leva";
 import create from "zustand";
@@ -158,7 +157,6 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
     const mutation = useFlightStore((state) => state.mutation);
     const batteryCharging = useBatteryStore((state) => state.charging);
     const batteryMutation = useBatteryStore((state) => state.mutation);
-    const pipState = usePipStore((state) => state.mutation);
     const droneCamera = useRef<THREE.PerspectiveCamera>(null);
     const batteryShaderMaterial = useRef<BatteryShaderMaterial>(null);
     const propellers = useRef<THREE.Mesh[]>([]);
@@ -184,9 +182,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
     api.quaternion.subscribe((val) => (quaternion.current = val));
     api.rotation.subscribe((val) => (rotation.current = val));
 
-    useHelper(pipState.isActive ? droneCamera : null, THREE.CameraHelper);
-
-    useFrame((_, dt) => {
+    useFrame(() => {
       // Get controls
       const throttling = controller.controls.throttling.value;
       const pitching = controller.controls.pitching.value;
@@ -295,8 +291,8 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
       const maxYaw = 1.5;
       yaw.current = yawInput * maxYaw * (yawing ? 1 : 0);
 
-      // Lift is the only force needed
-      api.applyLocalForce([0, lift.current, 0], [0, 0, 0]);
+      const forwardMomentum = clamp(lift.current * 0.025, 1, 0);
+      api.applyLocalForce([0, lift.current, forwardMomentum], [0, 0, 0]);
 
       const canManouvre = altitude > 0.01;
 
@@ -326,11 +322,8 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
       // Look at drone
       const worldPosition = drone.current.getWorldPosition(cameraVector);
       camera.lookAt(cameraVector);
-      camera.position.lerpVectors(
-        worldPosition.sub(cameraOffset),
-        cameraVector,
-        dt
-      );
+
+      camera.position.lerp(worldPosition.sub(cameraOffset), 0.1);
 
       // Update state
       mutation.liftForce = parse(lift.current);
