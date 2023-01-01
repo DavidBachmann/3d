@@ -37,21 +37,24 @@ import { controller } from "../controller";
 import { scale } from "../utils/scale";
 import { clamp } from "../utils/clamp";
 import { batteryShaderMaterial as BatteryShaderMaterial } from "../shaders/battery";
-import { Quaternion } from "cannon-es";
 
 // Make battery shader available as jsx element
 extend({ BatteryShaderMaterial });
+
+const parse = (num: number) => parseFloat(num.toFixed(3));
 
 // Drone flight state
 const useFlightStore = create(() => ({
   mutation: {
     altitude: 0,
     charging: false,
-    lift: 0,
-    yaw: 0,
-    pitch: 0,
+    autoBalance: true,
+    liftForce: 0,
+    yawForce: 0,
+    pitchForce: 0,
     pitchAngle: 0,
-    roll: 0,
+    rollForce: 0,
+    rollAngle: 0,
   },
 }));
 
@@ -130,6 +133,10 @@ const constants = {
   droneAmpleLift: 2.4,
   droneStableLift: 1.96,
   droneBatteryEmptyLift: 1.915,
+  autoBalance: {
+    rollCorrection: -5,
+    pitchCorection: -10,
+  },
 };
 
 const collisionBodies = {
@@ -155,6 +162,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
     const pitch = useRef(0);
     const pitchAngle = useRef(0);
     const yaw = useRef(0);
+    const rollAngle = useRef(0);
     const roll = useRef(0);
 
     const quaternion = useRef<Quad>([0, 0, 0, 1]);
@@ -183,12 +191,10 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
 
       // Drive shader uniform
       batteryShaderMaterial.current.uBatteryPercentage = clamp(
-        batteryMutation.percentage / 100,
+        parse(batteryMutation.percentage / 100),
         1,
         0
       );
-
-      const pos = drone.current.getWorldPosition(cameraVector);
 
       const altitude = Math.abs(
         drone.current.getWorldPosition(worldVector).y -
@@ -251,12 +257,24 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
       // Set roll
       // "Roll" is like rolling a barrell.
       const maxRoll = 1;
-      roll.current = rollInput * maxRoll * (rolling ? 1 : 0);
+      if (rolling) {
+        roll.current = rollInput * maxRoll;
+      } else {
+        const balanceForce =
+          maxRoll * mutation.rollAngle * constants.autoBalance.rollCorrection;
+        roll.current = balanceForce * (mutation.autoBalance ? 1 : 0);
+      }
 
       // Set pitch
       // "Pitch" is like a dive.
       const maxPitch = 1;
-      pitch.current = pitchInput * maxPitch * (pitching ? 1 : 0);
+      if (pitching) {
+        pitch.current = pitchInput * maxPitch;
+      } else {
+        const balanceForce =
+          maxPitch * mutation.pitchAngle * constants.autoBalance.pitchCorection;
+        pitch.current = balanceForce * (mutation.autoBalance ? 1 : 0);
+      }
 
       // Set yaw
       // "Yaw" is like looking around.
@@ -280,26 +298,34 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
         roll.current * torqueScale
       );
 
+      // Read the current angle of the drone
+      pitchEuler.setFromQuaternion(q, "YXZ");
+      pitchAngle.current = pitchEuler.x;
+      rollAngle.current = pitchEuler.z;
+
       // Correct for rotation
       v.applyQuaternion(q);
-
-      // Read the angle of the pitch
-      pitchAngle.current = pitchEuler.setFromQuaternion(q).x;
 
       // Apply angle-corrected torque to drone
       api.applyTorque(v.toArray());
 
       // Look at drone
+      const worldPosition = drone.current.getWorldPosition(cameraVector);
       camera.lookAt(cameraVector);
-      camera.position.lerpVectors(pos.sub(cameraOffset), cameraVector, dt);
+      camera.position.lerpVectors(
+        worldPosition.sub(cameraOffset),
+        cameraVector,
+        dt
+      );
 
       // Update state
-      mutation.lift = lift.current;
-      mutation.pitch = pitch.current;
-      mutation.roll = roll.current;
-      mutation.yaw = yaw.current;
-      mutation.pitchAngle = pitchAngle.current;
-      mutation.altitude = altitude;
+      mutation.liftForce = parse(lift.current);
+      mutation.rollForce = parse(roll.current);
+      mutation.rollAngle = parse(rollAngle.current);
+      mutation.pitchForce = parse(pitch.current);
+      mutation.pitchAngle = parse(pitchAngle.current);
+      mutation.yawForce = parse(yaw.current);
+      mutation.altitude = parse(altitude);
 
       // Update game controls
       controller.update();
@@ -574,6 +600,12 @@ function PhysicsWorld() {
   const pipState = usePipStore((state) => state.mutation);
 
   const [_, update] = useControls(() => ({
+    autoBalance: {
+      value: mutation.autoBalance,
+      onChange: (val) => {
+        mutation.autoBalance = val;
+      },
+    },
     altitude: mutation.altitude,
     battery: battery.percentage,
     droneCamera: {
@@ -582,22 +614,25 @@ function PhysicsWorld() {
         pipState.isActive = val;
       },
     },
-    liftForce: mutation.lift,
-    yawForce: mutation.yaw,
-    rollForce: mutation.roll,
-    pitchForce: mutation.pitch,
+    liftForce: mutation.liftForce,
+    yawForce: mutation.yawForce,
+    rollForce: mutation.rollForce,
+    rollAngle: mutation.rollAngle,
+    pitchForce: mutation.pitchForce,
     pitchAngle: mutation.pitchAngle,
   }));
 
   useEffect(() => {
     const id = setInterval(() => {
       update({
+        autoBalance: mutation.autoBalance,
         altitude: mutation.altitude,
         battery: battery.percentage,
-        liftForce: mutation.lift,
-        yawForce: mutation.yaw,
-        rollForce: mutation.roll,
-        pitchForce: mutation.pitch,
+        liftForce: mutation.liftForce,
+        yawForce: mutation.yawForce,
+        rollForce: mutation.rollForce,
+        rollAngle: mutation.rollAngle,
+        pitchForce: mutation.pitchForce,
         pitchAngle: mutation.pitchAngle,
         droneCamera: pipState.isActive,
       });
