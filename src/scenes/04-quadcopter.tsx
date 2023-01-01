@@ -23,7 +23,6 @@ import {
 } from "react";
 import { GLTF } from "three-stdlib";
 import {
-  Debug,
   Physics,
   PublicApi,
   Quad,
@@ -34,52 +33,16 @@ import {
 import { createPortal, useFrame, useThree, extend } from "@react-three/fiber";
 import { repeatTextures } from "../utils/repeatTexture";
 import { controller } from "../controller";
-import { scale } from "../utils/scale";
+import { linearScale } from "../utils/scale";
 import { clamp } from "../utils/clamp";
 import { batteryShaderMaterial as BatteryShaderMaterial } from "../shaders/battery";
 
 // Make battery shader available as jsx element
 extend({ BatteryShaderMaterial });
 
-const parse = (num: number) => parseFloat(num.toFixed(3));
-
-// Drone flight state
-const useFlightStore = create(() => ({
-  mutation: {
-    altitude: 0,
-    charging: false,
-    autoBalance: true,
-    liftForce: 0,
-    yawForce: 0,
-    pitchForce: 0,
-    pitchAngle: 0,
-    rollForce: 0,
-    rollAngle: 0,
-  },
-}));
-
-// Picture-in-picture state
-const usePipStore = create(() => ({
-  camera: null,
-  mutation: {
-    isActive: false,
-  },
-}));
-
-// Battery state
-const useBatteryStore = create(
-  combine(
-    {
-      charging: false,
-      mutation: {
-        percentage: 100,
-      },
-    },
-    (set) => ({
-      charge: (active: boolean) => set({ charging: active }),
-    })
-  )
-);
+type BatteryShaderMaterial = typeof THREE.ShaderMaterial & {
+  uBatteryPercentage: number;
+};
 
 type GLTFResult = GLTF & {
   nodes: {
@@ -116,32 +79,75 @@ type ModelProps = {
   droneApi: PublicApi;
 };
 
+const parse = (num: number) => parseFloat(num.toFixed(3));
+
+// Drone flight state
+const useFlightStore = create(() => ({
+  mutation: {
+    altitude: 0,
+    charging: false,
+    autoBalance: true,
+    liftForce: 0,
+    yawVelocity: 0,
+    pitchVelocity: 0,
+    pitchAngle: 0,
+    rollVelocity: 0,
+    rollAngle: 0,
+  },
+}));
+
+// Picture-in-picture state
+const usePipStore = create(() => ({
+  camera: null,
+  mutation: {
+    isActive: false,
+  },
+}));
+
+// Battery state
+const useBatteryStore = create(
+  combine(
+    {
+      charging: false,
+      mutation: {
+        percentage: 100,
+      },
+    },
+    (set) => ({
+      charge: (active: boolean) => set({ charging: active }),
+    })
+  )
+);
+
 const torqueVector = new THREE.Vector3();
 const torqueQuaternion = new THREE.Quaternion();
-const pitchEuler = new THREE.Euler();
+const droneEuler = new THREE.Euler();
 const worldVector = new THREE.Vector3();
 const cameraVector = new THREE.Vector3();
 const cameraOffset = new THREE.Vector3(0, -1, 1);
-const spawnPoint = new THREE.Vector3(0, 0, 0);
 
 const constants = {
   maxAltitude: 2.5,
-  gravity: -9.8,
-  droneSize: 0.32,
-  droneHeight: 0.4,
-  droneMass: 0.2,
-  droneAmpleLift: 2.4,
-  droneStableLift: 1.96,
-  droneBatteryEmptyLift: 1.915,
+  droneAttributes: {
+    size: 0.32,
+    height: 0.4,
+    mass: 0.2,
+    ampleLift: 2.4,
+    stableLift: 1.96,
+    failingLift: 1.915,
+    propellerSpeed: 0.65,
+  },
   autoBalance: {
     rollCorrection: -5,
-    pitchCorection: -10,
+    pitchCorection: -5,
   },
-};
-
-const collisionBodies = {
-  station: "STATION",
-  drone: "DRONE",
+  collisionBodies: {
+    station: "STATION",
+    drone: "DRONE",
+  },
+  world: {
+    gravity: -9.8,
+  },
 };
 
 const Drone = forwardRef<THREE.Group, ModelProps>(
@@ -152,12 +158,13 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
     const mutation = useFlightStore((state) => state.mutation);
     const batteryCharging = useBatteryStore((state) => state.charging);
     const batteryMutation = useBatteryStore((state) => state.mutation);
-    const droneCamera = useRef<THREE.PerspectiveCamera>(null);
-    const batteryShaderMaterial = useRef<any>(null);
-    const camera = useThree((state) => state.camera);
-    const propellers = useRef<THREE.Mesh[]>([]);
     const pipState = usePipStore((state) => state.mutation);
+    const droneCamera = useRef<THREE.PerspectiveCamera>(null);
+    const batteryShaderMaterial = useRef<BatteryShaderMaterial>(null);
+    const propellers = useRef<THREE.Mesh[]>([]);
+    const camera = useThree((state) => state.camera);
 
+    // Forces
     const lift = useRef(0);
     const pitch = useRef(0);
     const pitchAngle = useRef(0);
@@ -196,12 +203,11 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
         0
       );
 
+      // Calculate drone altitude
       const altitude = Math.abs(
         drone.current.getWorldPosition(worldVector).y -
-          spawnPoint.y -
-          constants.droneHeight / 2
+          constants.droneAttributes.height / 2
       );
-      const outOfBattery = batteryMutation.percentage === 0;
 
       // Drive propellers
       for (const propeller of propellers.current) {
@@ -209,25 +215,33 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
           break;
         }
 
-        if (!outOfBattery) {
-          propeller.rotation.y += Math.min(0.3 * lift.current, 4);
-        }
+        propeller.rotation.y += linearScale(
+          lift.current,
+          [0, constants.droneAttributes.ampleLift],
+          [0, constants.droneAttributes.propellerSpeed]
+        );
       }
 
       // Scale ample and stable lifts with battery percentage
-      const scaledAmpleLift = scale(
+      const scaledAmpleLift = linearScale(
         batteryMutation.percentage,
         [100, 0],
-        [constants.droneAmpleLift, constants.droneBatteryEmptyLift]
+        [
+          constants.droneAttributes.ampleLift,
+          constants.droneAttributes.failingLift,
+        ]
       );
-      const scaledStableLift = scale(
+      const scaledStableLift = linearScale(
         batteryMutation.percentage,
         [100, 0],
-        [constants.droneStableLift, constants.droneBatteryEmptyLift]
+        [
+          constants.droneAttributes.stableLift,
+          constants.droneAttributes.failingLift,
+        ]
       );
 
       // Scale lift force from stable to ample by altitude
-      const scaledLift = scale(
+      const scaledLift = linearScale(
         mutation.altitude,
         [constants.maxAltitude, 0],
         [scaledStableLift, scaledAmpleLift]
@@ -299,9 +313,9 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
       );
 
       // Read the current angle of the drone
-      pitchEuler.setFromQuaternion(q, "YXZ");
-      pitchAngle.current = pitchEuler.x;
-      rollAngle.current = pitchEuler.z;
+      droneEuler.setFromQuaternion(q, "YXZ");
+      pitchAngle.current = droneEuler.x;
+      rollAngle.current = droneEuler.z;
 
       // Correct for rotation
       v.applyQuaternion(q);
@@ -320,11 +334,11 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
 
       // Update state
       mutation.liftForce = parse(lift.current);
-      mutation.rollForce = parse(roll.current);
+      mutation.rollVelocity = parse(roll.current);
       mutation.rollAngle = parse(rollAngle.current);
-      mutation.pitchForce = parse(pitch.current);
+      mutation.pitchVelocity = parse(pitch.current);
       mutation.pitchAngle = parse(pitchAngle.current);
-      mutation.yawForce = parse(yaw.current);
+      mutation.yawVelocity = parse(yaw.current);
       mutation.altitude = parse(altitude);
 
       // Update game controls
@@ -332,17 +346,12 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
     });
 
     return (
-      <group
-        name={collisionBodies.drone}
-        dispose={null}
-        scale={0.6}
-        ref={drone}
-      >
+      <group name={constants.collisionBodies.drone} scale={0.6} ref={drone}>
         <group position={[0, 0, 0]}>
           <PerspectiveCamera
             ref={droneCamera}
             fov={70}
-            position={[0, 0, constants.droneSize]}
+            position={[0, 0, constants.droneAttributes.size]}
             rotation={[Math.PI, 0, Math.PI]}
             near={0.01}
             far={10}
@@ -538,7 +547,11 @@ const Station = forwardRef<THREE.Group, StationProps>(
     }, []);
 
     return (
-      <group name={collisionBodies.station} ref={station} position={position}>
+      <group
+        name={constants.collisionBodies.station}
+        ref={station}
+        position={position}
+      >
         <mesh>
           <boxGeometry args={[...args]} />
           <meshStandardMaterial
@@ -615,10 +628,10 @@ function PhysicsWorld() {
       },
     },
     liftForce: mutation.liftForce,
-    yawForce: mutation.yawForce,
-    rollForce: mutation.rollForce,
+    yawVelocity: mutation.yawVelocity,
+    rollVelocity: mutation.rollVelocity,
     rollAngle: mutation.rollAngle,
-    pitchForce: mutation.pitchForce,
+    pitchVelocity: mutation.pitchVelocity,
     pitchAngle: mutation.pitchAngle,
   }));
 
@@ -629,10 +642,10 @@ function PhysicsWorld() {
         altitude: mutation.altitude,
         battery: battery.percentage,
         liftForce: mutation.liftForce,
-        yawForce: mutation.yawForce,
-        rollForce: mutation.rollForce,
+        yawVelocity: mutation.yawVelocity,
+        rollVelocity: mutation.rollVelocity,
         rollAngle: mutation.rollAngle,
-        pitchForce: mutation.pitchForce,
+        pitchVelocity: mutation.pitchVelocity,
         pitchAngle: mutation.pitchAngle,
         droneCamera: pipState.isActive,
       });
@@ -643,13 +656,17 @@ function PhysicsWorld() {
 
   const [drone, droneApi] = useBox(
     () => ({
-      args: [constants.droneSize, constants.droneHeight, constants.droneSize],
-      position: [0, constants.droneHeight, 0],
+      args: [
+        constants.droneAttributes.size,
+        constants.droneAttributes.height,
+        constants.droneAttributes.size,
+      ],
+      position: [0, constants.droneAttributes.height, 0],
       material: {
         friction: 0.2,
         restitution: 1,
       },
-      mass: constants.droneMass,
+      mass: constants.droneAttributes.mass,
       angularDamping: 0,
       linearDamping: 0.5,
       fixedRotation: false,
@@ -670,13 +687,13 @@ function PhysicsWorld() {
       isTrigger: true,
       onCollideBegin: (event) => {
         const collidingWith = event.body.name;
-        if (collidingWith === collisionBodies.drone) {
+        if (collidingWith === constants.collisionBodies.drone) {
           charge(true);
         }
       },
       onCollideEnd: (event) => {
         const collidingWith = event.body.name;
-        if (collidingWith === collisionBodies.drone) {
+        if (collidingWith === constants.collisionBodies.drone) {
           charge(false);
         }
       },
@@ -717,12 +734,10 @@ function Scene() {
         maxSubSteps={20}
         stepSize={1 / 60}
         broadphase="SAP"
-        gravity={[0, constants.gravity, 0]}
+        gravity={[0, constants.world.gravity, 0]}
         allowSleep={true}
       >
-        {/*<Debug>*/}
         <PhysicsWorld />
-        {/*</Debug>*/}
       </Physics>
     </Fragment>
   );
