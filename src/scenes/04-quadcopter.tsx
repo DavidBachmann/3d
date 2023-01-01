@@ -37,6 +37,7 @@ import { controller } from "../controller";
 import { scale } from "../utils/scale";
 import { clamp } from "../utils/clamp";
 import { batteryShaderMaterial as BatteryShaderMaterial } from "../shaders/battery";
+import { Quaternion } from "cannon-es";
 
 // Make battery shader available as jsx element
 extend({ BatteryShaderMaterial });
@@ -49,6 +50,7 @@ const useFlightStore = create(() => ({
     lift: 0,
     yaw: 0,
     pitch: 0,
+    pitchAngle: 0,
     roll: 0,
   },
 }));
@@ -111,8 +113,9 @@ type ModelProps = {
   droneApi: PublicApi;
 };
 
-const unitVector = new THREE.Vector3();
-const unitQuaternion = new THREE.Quaternion();
+const torqueVector = new THREE.Vector3();
+const torqueQuaternion = new THREE.Quaternion();
+const pitchEuler = new THREE.Euler();
 const worldVector = new THREE.Vector3();
 const cameraVector = new THREE.Vector3();
 const cameraOffset = new THREE.Vector3(0, -1, 1);
@@ -150,10 +153,12 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
 
     const lift = useRef(0);
     const pitch = useRef(0);
+    const pitchAngle = useRef(0);
     const yaw = useRef(0);
     const roll = useRef(0);
 
     const quaternion = useRef<Quad>([0, 0, 0, 1]);
+    const rotation = useRef<Triplet>([0, 0, 0]);
 
     useLayoutEffect(() => {
       usePipStore.setState({
@@ -162,6 +167,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
     });
 
     api.quaternion.subscribe((val) => (quaternion.current = val));
+    api.rotation.subscribe((val) => (rotation.current = val));
 
     useHelper(pipState.isActive ? droneCamera : null, THREE.CameraHelper);
 
@@ -183,6 +189,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
       );
 
       const pos = drone.current.getWorldPosition(cameraVector);
+
       const altitude = Math.abs(
         drone.current.getWorldPosition(worldVector).y -
           spawnPoint.y -
@@ -197,7 +204,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
         }
 
         if (!outOfBattery) {
-          propeller.rotation.y += Math.min(0.35 * lift.current, 4);
+          propeller.rotation.y += Math.min(0.3 * lift.current, 4);
         }
       }
 
@@ -228,7 +235,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
         );
       }
 
-      if (throttling && !outOfBattery) {
+      if (throttling) {
         // Drain the battery
         batteryMutation.percentage = Math.max(
           batteryMutation.percentage - 0.02,
@@ -244,68 +251,42 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
       // Set roll
       // "Roll" is like rolling a barrell.
       const maxRoll = 1;
-
-      if (rolling) {
-        roll.current = rollInput * maxRoll;
-      } else {
-        if (Math.sign(roll.current) === -1) {
-          roll.current = Math.min(0, roll.current + 0.05);
-        } else {
-          roll.current = Math.max(0, roll.current - 0.05);
-        }
-      }
+      roll.current = rollInput * maxRoll * (rolling ? 1 : 0);
 
       // Set pitch
       // "Pitch" is like a dive.
       const maxPitch = 1;
-
-      if (pitching) {
-        pitch.current = pitchInput * maxPitch;
-      } else {
-        // Gradually level off pitch
-        if (Math.sign(pitch.current) === -1) {
-          pitch.current = Math.min((pitch.current += 0.05), 0);
-        } else {
-          pitch.current = Math.max((pitch.current -= 0.05), 0);
-        }
-      }
+      pitch.current = pitchInput * maxPitch * (pitching ? 1 : 0);
 
       // Set yaw
       // "Yaw" is like looking around.
-      const maxYaw = 1;
-
-      if (yawing) {
-        yaw.current = yawInput * maxYaw;
-      } else {
-        // Gradually level off yaw
-        if (Math.sign(yaw.current) === -1) {
-          yaw.current = Math.min((yaw.current += 0.05), 0);
-        } else {
-          yaw.current = Math.max((yaw.current -= 0.05), 0);
-        }
-      }
+      const maxYaw = 1.5;
+      yaw.current = yawInput * maxYaw * (yawing ? 1 : 0);
 
       // Lift is the only force needed
       api.applyLocalForce([0, lift.current, 0], [0, 0, 0]);
 
       const canManouvre = altitude > 0.01;
 
-      if (canManouvre) {
-        api.angularVelocity.set(0, yaw.current, 0);
-      }
-
       const torqueScale = 0.1;
 
-      // Correct for rotation
+      api.angularVelocity.set(0, yaw.current * (canManouvre ? 1 : 0), 0);
+
       const qc = quaternion.current;
-      const q = unitQuaternion.set(qc[0], qc[1], qc[2], qc[3]);
-      const v = unitVector.set(
+      const q = torqueQuaternion.set(qc[0], qc[1], qc[2], qc[3]);
+      const v = torqueVector.set(
         pitch.current * torqueScale,
         0,
         roll.current * torqueScale
       );
 
+      // Correct for rotation
       v.applyQuaternion(q);
+
+      // Read the angle of the pitch
+      pitchAngle.current = pitchEuler.setFromQuaternion(q).x;
+
+      // Apply angle-corrected torque to drone
       api.applyTorque(v.toArray());
 
       // Look at drone
@@ -317,6 +298,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
       mutation.pitch = pitch.current;
       mutation.roll = roll.current;
       mutation.yaw = yaw.current;
+      mutation.pitchAngle = pitchAngle.current;
       mutation.altitude = altitude;
 
       // Update game controls
@@ -600,10 +582,11 @@ function PhysicsWorld() {
         pipState.isActive = val;
       },
     },
-    lift: mutation.lift,
-    yaw: mutation.yaw,
-    roll: mutation.roll,
-    pitch: mutation.pitch,
+    liftForce: mutation.lift,
+    yawForce: mutation.yaw,
+    rollForce: mutation.roll,
+    pitchForce: mutation.pitch,
+    pitchAngle: mutation.pitchAngle,
   }));
 
   useEffect(() => {
@@ -611,13 +594,14 @@ function PhysicsWorld() {
       update({
         altitude: mutation.altitude,
         battery: battery.percentage,
-        lift: mutation.lift,
-        yaw: mutation.yaw,
-        roll: mutation.roll,
-        pitch: mutation.pitch,
+        liftForce: mutation.lift,
+        yawForce: mutation.yaw,
+        rollForce: mutation.roll,
+        pitchForce: mutation.pitch,
+        pitchAngle: mutation.pitchAngle,
         droneCamera: pipState.isActive,
       });
-    }, 100);
+    }, 1000 / 5);
 
     return () => clearTimeout(id);
   }, []);
@@ -685,11 +669,7 @@ function Scene() {
       <color attach="background" args={[0xf3f6fb]} />
       <fogExp2 attach="fog" color={0xf3f6fb} density={0.05} />
       <ambientLight intensity={0.8} />
-      <directionalLight
-        position={[2, 10, 0]}
-        castShadow
-        shadow-mapSize={1024}
-      />
+      <directionalLight position={[2, 2, 2]} castShadow shadow-mapSize={1024} />
       <PerspectiveCamera makeDefault fov={70} position={[0, 0, 0]} />
       <Environment preset="forest" />
       <SceneRenderer />
