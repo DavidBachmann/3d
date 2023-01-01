@@ -29,7 +29,17 @@ import {
   useBox,
   usePlane,
 } from "@react-three/cannon";
-import { createPortal, useFrame, useThree, extend } from "@react-three/fiber";
+import {
+  createPortal,
+  useFrame,
+  useThree,
+  extend,
+  Canvas,
+} from "@react-three/fiber";
+import { Perf } from "r3f-perf";
+import { Joystick } from "react-joystick-component";
+import { IJoystickUpdateEvent } from "react-joystick-component/build/lib/Joystick";
+import { KeyboardDevice, TouchDevice } from "@hmans/controlfreak";
 import { repeatTextures } from "../utils/repeatTexture";
 import { controller } from "../controller";
 import { linearScale } from "../utils/scale";
@@ -81,7 +91,7 @@ type ModelProps = {
 const parse = (num: number) => parseFloat(num.toFixed(3));
 
 // Drone flight state
-const useFlightStore = create(() => ({
+const useDroneFlightStore = create(() => ({
   mutation: {
     altitude: 0,
     charging: false,
@@ -95,8 +105,27 @@ const useFlightStore = create(() => ({
   },
 }));
 
+const useDroneControlsStore = create(
+  combine(
+    {
+      keyboardActive: false,
+      joystickActive: false,
+      mutation: {
+        pitchInput: 0,
+        rollInput: 0,
+        throttleInput: 0,
+        yawInput: 0,
+      },
+    },
+    (set) => ({
+      setKeyboardActive: (active: boolean) => set({ keyboardActive: active }),
+      setJoystickActive: (active: boolean) => set({ joystickActive: active }),
+    })
+  )
+);
+
 // Picture-in-picture state
-const usePipStore = create(() => ({
+const useDroneCameraStore = create(() => ({
   camera: null,
   mutation: {
     isActive: false,
@@ -104,7 +133,7 @@ const usePipStore = create(() => ({
 }));
 
 // Battery state
-const useBatteryStore = create(
+const useDroneBatteryStore = create(
   combine(
     {
       charging: false,
@@ -154,9 +183,23 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
     const { nodes, materials } = useGLTF(
       "/gltfs/quadcopter.gltf"
     ) as unknown as GLTFResult;
-    const mutation = useFlightStore((state) => state.mutation);
-    const batteryCharging = useBatteryStore((state) => state.charging);
-    const batteryMutation = useBatteryStore((state) => state.mutation);
+    const flightMutation = useDroneFlightStore((state) => state.mutation);
+    const batteryCharging = useDroneBatteryStore((state) => state.charging);
+    const batteryMutation = useDroneBatteryStore((state) => state.mutation);
+
+    const controlsMutation = useDroneControlsStore((state) => state.mutation);
+    const keyboardControl = useDroneControlsStore(
+      (state) => state.keyboardActive
+    );
+    const activateKeyboard = useDroneControlsStore((state) => () => {
+      state.setKeyboardActive(true);
+      state.setJoystickActive(false);
+    });
+    const activateJoystick = useDroneControlsStore((state) => () => {
+      state.setKeyboardActive(false);
+      state.setJoystickActive(true);
+    });
+
     const droneCamera = useRef<THREE.PerspectiveCamera>(null);
     const batteryShaderMaterial = useRef<BatteryShaderMaterial>(null);
     const propellers = useRef<THREE.Mesh[]>([]);
@@ -166,15 +209,15 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
     const lift = useRef(0);
     const pitch = useRef(0);
     const pitchAngle = useRef(0);
-    const yaw = useRef(0);
-    const rollAngle = useRef(0);
     const roll = useRef(0);
+    const rollAngle = useRef(0);
+    const yaw = useRef(0);
 
     const quaternion = useRef<Quad>([0, 0, 0, 1]);
     const rotation = useRef<Triplet>([0, 0, 0]);
 
     useLayoutEffect(() => {
-      usePipStore.setState({
+      useDroneCameraStore.setState({
         camera: droneCamera,
       });
     });
@@ -182,15 +225,58 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
     api.quaternion.subscribe((val) => (quaternion.current = val));
     api.rotation.subscribe((val) => (rotation.current = val));
 
+    controller.onDeviceChange.add((d) => {
+      if (d instanceof KeyboardDevice) {
+        return activateKeyboard();
+      }
+      if (d instanceof TouchDevice) {
+        return activateJoystick();
+      }
+    });
+
     useFrame(() => {
-      // Get controls
-      const throttling = controller.controls.throttling.value;
-      const pitching = controller.controls.pitching.value;
-      const rolling = controller.controls.rolling.value;
-      const yawing = controller.controls.yawing.value;
-      const yawInput = controller.controls.thrustYaw.value.x * -1;
-      const pitchInput = controller.controls.pitchRoll.value.y;
-      const rollInput = controller.controls.pitchRoll.value.x;
+      let throttling = false;
+      let pitching = false;
+      let rolling = false;
+      let yawing = false;
+
+      if (keyboardControl) {
+        throttling = controller.controls.throttling.value;
+        pitching = controller.controls.pitching.value;
+        rolling = controller.controls.rolling.value;
+        yawing = controller.controls.yawing.value;
+        const pitchInput = controller.controls.pitchRoll.value.y;
+        const rollInput = controller.controls.pitchRoll.value.x;
+        const yawInput = controller.controls.thrustYaw.value.x;
+
+        if (throttling) {
+          controlsMutation.throttleInput = 1;
+        } else {
+          controlsMutation.throttleInput = 0;
+        }
+
+        if (pitching) {
+          controlsMutation.pitchInput = pitchInput;
+        }
+
+        if (rolling) {
+          controlsMutation.rollInput = rollInput;
+        }
+
+        if (yawing) {
+          controlsMutation.yawInput = yawInput * -1;
+        }
+      } else {
+        const pitchInput = controlsMutation.pitchInput;
+        const rollInput = controlsMutation.rollInput;
+        const throttleInput = controlsMutation.throttleInput;
+        const yawInput = controlsMutation.yawInput;
+
+        pitching = pitchInput !== 0;
+        rolling = rollInput !== 0;
+        throttling = throttleInput > 0;
+        yawing = yawInput !== 0;
+      }
 
       // Drive shader uniform
       batteryShaderMaterial.current.uBatteryPercentage = clamp(
@@ -238,7 +324,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
 
       // Scale lift force from stable to ample by altitude
       const scaledLift = linearScale(
-        mutation.altitude,
+        flightMutation.altitude,
         [constants.maxAltitude, 0],
         [scaledStableLift, scaledAmpleLift]
       );
@@ -258,8 +344,8 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
           0
         );
 
-        // Gradually increase lift if throttling
-        lift.current = scaledLift;
+        // Increase lift when throttling
+        lift.current = scaledLift * controlsMutation.throttleInput;
       } else {
         lift.current = Math.max(0, (lift.current -= 0.02));
       }
@@ -268,28 +354,32 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
       // "Roll" is like rolling a barrell.
       const maxRoll = 1;
       if (rolling) {
-        roll.current = rollInput * maxRoll;
+        roll.current = controlsMutation.rollInput * maxRoll;
       } else {
         const balanceForce =
-          maxRoll * mutation.rollAngle * constants.autoBalance.rollCorrection;
-        roll.current = balanceForce * (mutation.autoBalance ? 1 : 0);
+          maxRoll *
+          flightMutation.rollAngle *
+          constants.autoBalance.rollCorrection;
+        roll.current = balanceForce * (flightMutation.autoBalance ? 1 : 0);
       }
 
       // Set pitch
       // "Pitch" is like a dive.
       const maxPitch = 1;
       if (pitching) {
-        pitch.current = pitchInput * maxPitch;
+        pitch.current = controlsMutation.pitchInput * maxPitch;
       } else {
         const balanceForce =
-          maxPitch * mutation.pitchAngle * constants.autoBalance.pitchCorection;
-        pitch.current = balanceForce * (mutation.autoBalance ? 1 : 0);
+          maxPitch *
+          flightMutation.pitchAngle *
+          constants.autoBalance.pitchCorection;
+        pitch.current = balanceForce * (flightMutation.autoBalance ? 1 : 0);
       }
 
       // Set yaw
       // "Yaw" is like looking around.
       const maxYaw = 1.5;
-      yaw.current = yawInput * maxYaw * (yawing ? 1 : 0);
+      yaw.current = controlsMutation.yawInput * maxYaw * (yawing ? 1 : 0);
 
       const forwardMomentum = clamp(lift.current * 0.025, 1, 0);
       api.applyLocalForce([0, lift.current, forwardMomentum], [0, 0, 0]);
@@ -326,13 +416,13 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
       camera.position.lerp(worldPosition.sub(cameraOffset), 0.1);
 
       // Update state
-      mutation.liftForce = parse(lift.current);
-      mutation.rollVelocity = parse(roll.current);
-      mutation.rollAngle = parse(rollAngle.current);
-      mutation.pitchVelocity = parse(pitch.current);
-      mutation.pitchAngle = parse(pitchAngle.current);
-      mutation.yawVelocity = parse(yaw.current);
-      mutation.altitude = parse(altitude);
+      flightMutation.liftForce = parse(lift.current);
+      flightMutation.rollVelocity = parse(roll.current);
+      flightMutation.rollAngle = parse(rollAngle.current);
+      flightMutation.pitchVelocity = parse(pitch.current);
+      flightMutation.pitchAngle = parse(pitchAngle.current);
+      flightMutation.yawVelocity = parse(yaw.current);
+      flightMutation.altitude = parse(altitude);
 
       // Update game controls
       controller.update();
@@ -532,7 +622,7 @@ const Station = forwardRef<THREE.Group, StationProps>(
   ) => {
     const [charging, set] = useState(false);
     useEffect(() => {
-      const unsub = useBatteryStore.subscribe((state) => {
+      const unsub = useDroneBatteryStore.subscribe((state) => {
         set(state.charging);
       });
 
@@ -600,10 +690,11 @@ const Ground = ({ size = 16 }) => {
 };
 
 function PhysicsWorld() {
-  const mutation = useFlightStore((state) => state.mutation);
-  const battery = useBatteryStore((state) => state.mutation);
-  const charge = useBatteryStore((state) => state.charge);
-  const pipState = usePipStore((state) => state.mutation);
+  const mutation = useDroneFlightStore((state) => state.mutation);
+  const battery = useDroneBatteryStore((state) => state.mutation);
+  const charge = useDroneBatteryStore((state) => state.charge);
+  const droneCameraState = useDroneCameraStore((state) => state.mutation);
+  const droneControlsState = useDroneControlsStore((state) => state.mutation);
 
   const [_, update] = useControls(() => ({
     autoBalance: {
@@ -615,9 +706,9 @@ function PhysicsWorld() {
     altitude: mutation.altitude,
     battery: battery.percentage,
     droneCamera: {
-      value: pipState.isActive,
+      value: droneCameraState.isActive,
       onChange: (val) => {
-        pipState.isActive = val;
+        droneCameraState.isActive = val;
       },
     },
     liftForce: mutation.liftForce,
@@ -626,6 +717,7 @@ function PhysicsWorld() {
     rollAngle: mutation.rollAngle,
     pitchVelocity: mutation.pitchVelocity,
     pitchAngle: mutation.pitchAngle,
+    throttle: droneControlsState.throttleInput,
   }));
 
   useEffect(() => {
@@ -640,7 +732,8 @@ function PhysicsWorld() {
         rollAngle: mutation.rollAngle,
         pitchVelocity: mutation.pitchVelocity,
         pitchAngle: mutation.pitchAngle,
-        droneCamera: pipState.isActive,
+        droneCamera: droneCameraState.isActive,
+        throttle: droneControlsState.throttleInput,
       });
     }, 1000 / 5);
 
@@ -709,29 +802,109 @@ function PhysicsWorld() {
 }
 
 function Scene() {
+  const controlsMutation = useDroneControlsStore((state) => state.mutation);
+  const renderJoystick = useDroneControlsStore((state) => state.joystickActive);
+
+  function handleLeftStickMove(e: IJoystickUpdateEvent) {
+    controlsMutation.yawInput = e.x * -1;
+
+    // We only care about positive throttling.
+    if (e.y >= 0) {
+      const TODO_THRESHOLD = 0.9;
+      controlsMutation.throttleInput = Math.max(e.y, TODO_THRESHOLD);
+    }
+  }
+
+  function handleLeftStickStop() {
+    controlsMutation.throttleInput = 0;
+    controlsMutation.yawInput = 0;
+  }
+
+  function handleRightStickMove(e: IJoystickUpdateEvent) {
+    controlsMutation.rollInput = e.x;
+    controlsMutation.pitchInput = e.x;
+  }
+
+  function handleRightStickStop() {
+    controlsMutation.rollInput = 0;
+    controlsMutation.pitchInput = 0;
+  }
+
+  useEffect(() => {
+    controller.start();
+    return () => controller.stop();
+  }, []);
+
   return (
     <Fragment key="04">
-      <color attach="background" args={[0xf3f6fb]} />
-      <fogExp2 attach="fog" color={0xf3f6fb} density={0.05} />
-      <ambientLight intensity={0.8} />
-      <directionalLight position={[2, 2, 2]} castShadow shadow-mapSize={1024} />
-      <PerspectiveCamera makeDefault fov={70} position={[0, 0, 0]} />
-      <Environment preset="forest" />
-      <SceneRenderer />
-      <Physics
-        defaultContactMaterial={{
-          contactEquationStiffness: 1e9,
-        }}
-        iterations={50}
-        tolerance={0}
-        maxSubSteps={20}
-        stepSize={1 / 60}
-        broadphase="SAP"
-        gravity={[0, constants.world.gravity, 0]}
-        allowSleep={true}
-      >
-        <PhysicsWorld />
-      </Physics>
+      <Canvas>
+        <Perf position="top-left" />
+        <color attach="background" args={[0xf3f6fb]} />
+        <fogExp2 attach="fog" color={0xf3f6fb} density={0.05} />
+        <ambientLight intensity={0.8} />
+        <directionalLight
+          position={[2, 2, 2]}
+          castShadow
+          shadow-mapSize={1024}
+        />
+        <PerspectiveCamera makeDefault fov={70} position={[0, 0, 0]} />
+        <Environment preset="forest" />
+        <SceneRenderer />
+        <Physics
+          defaultContactMaterial={{
+            contactEquationStiffness: 1e9,
+          }}
+          iterations={50}
+          tolerance={0}
+          maxSubSteps={20}
+          stepSize={1 / 60}
+          broadphase="SAP"
+          gravity={[0, constants.world.gravity, 0]}
+          allowSleep={true}
+        >
+          <PhysicsWorld />
+        </Physics>
+      </Canvas>
+      {renderJoystick && (
+        <Fragment key="joystick">
+          <div
+            style={{
+              position: "fixed",
+              bottom: "32px",
+              left: 0,
+              right: "50%",
+              margin: "auto",
+              width: 100,
+            }}
+          >
+            <Joystick
+              baseColor="#355764"
+              stickColor="#FFEA11"
+              size={100}
+              move={handleLeftStickMove}
+              stop={handleLeftStickStop}
+            />
+          </div>
+          <div
+            style={{
+              position: "fixed",
+              bottom: "32px",
+              left: "50%",
+              right: 0,
+              margin: "auto",
+              width: 100,
+            }}
+          >
+            <Joystick
+              baseColor="#355764"
+              stickColor="#FFEA11"
+              size={100}
+              move={handleRightStickMove}
+              stop={handleRightStickStop}
+            />
+          </div>
+        </Fragment>
+      )}
     </Fragment>
   );
 }
@@ -740,8 +913,8 @@ function SceneRenderer() {
   const orthographicCamera = useRef();
   const pipScene = new THREE.Scene();
   const frameBuffer = useFBO();
-  const pipRef = usePipStore((state) => state.camera);
-  const pipState = usePipStore((state) => state.mutation);
+  const pipRef = useDroneCameraStore((state) => state.camera);
+  const pipState = useDroneCameraStore((state) => state.mutation);
 
   useFrame(({ gl, camera, scene }) => {
     gl.autoClear = false;

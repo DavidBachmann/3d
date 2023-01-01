@@ -1,8 +1,9 @@
 import { Fragment, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useTexture, Stage, OrbitControls, Lathe } from "@react-three/drei";
 import { repeatTextures } from "../utils/repeatTexture";
+import { Perf } from "r3f-perf";
 
 const Snow = ({ depth = 30, amount = 3000, speed = 2 }) => {
   const tempObject = new THREE.Object3D();
@@ -132,7 +133,7 @@ const Box = () => {
   );
 };
 
-const Scene = () => {
+const World = () => {
   const ref = useRef<THREE.Group>(null);
   const camera = useThree((state) => state.camera);
 
@@ -179,5 +180,14 @@ const Scene = () => {
     </Fragment>
   );
 };
+
+function Scene() {
+  return (
+    <Canvas shadows dpr={[1, 2]}>
+      <Perf position="top-left" />
+      <World />
+    </Canvas>
+  );
+}
 
 export default Scene;

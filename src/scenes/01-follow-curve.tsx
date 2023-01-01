@@ -1,6 +1,6 @@
 import { Fragment, useRef } from "react";
 import * as THREE from "three";
-import { RootState, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, RootState, useFrame, useThree } from "@react-three/fiber";
 import {
   Environment,
   Sphere,
@@ -9,6 +9,7 @@ import {
 } from "@react-three/drei";
 import { TrefoilKnot } from "three-stdlib";
 import { LayerMaterial, Color, Depth, Noise } from "lamina";
+import { Perf } from "r3f-perf";
 
 /* We're building a cube-mapped environment declaratively.
   Anything you put in here will be filmed (once) by a cubemap-camera and applied to the scenes environment, and optionally background. */
@@ -33,7 +34,7 @@ const LaminaCubeMap = () => (
   </Environment>
 );
 
-const Scene = () => {
+const World = () => {
   const scale = 15;
   const sphere = useRef<THREE.Group>(null);
   const position = new THREE.Vector3();
@@ -96,5 +97,14 @@ const Scene = () => {
     </Fragment>
   );
 };
+
+function Scene() {
+  return (
+    <Canvas shadows dpr={[1, 2]}>
+      <Perf position="top-left" />
+      <World />
+    </Canvas>
+  );
+}
 
 export default Scene;

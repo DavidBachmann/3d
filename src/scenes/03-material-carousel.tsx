@@ -12,6 +12,8 @@ import { animated, useSpring } from "@react-spring/three";
 import { Color, Depth, LayerMaterial } from "lamina";
 import type { GLTF } from "three-stdlib/loaders/GLTFLoader";
 import { Mesh } from "three";
+import { Canvas } from "@react-three/fiber";
+import { Perf } from "r3f-perf";
 
 interface ModelGLTF extends GLTF {
   nodes: {
@@ -115,12 +117,10 @@ function Model({ isVisible = false }: { isVisible: boolean }) {
   );
 }
 
-const Scene = () => {
+const World = () => {
   const { isVisible } = useControls({ isVisible: false });
   const perspectiveCamera = useRef<THREE.PerspectiveCamera>(null);
   const light = useRef();
-  //useHelper(perspectiveCamera, THREE.CameraHelper);
-  //useHelper(light, THREE.DirectionalLightHelper);
 
   const { float } = useSpring({
     float: isVisible ? 1.5 : -1,
@@ -203,6 +203,15 @@ const Scene = () => {
     </Fragment>
   );
 };
+
+function Scene() {
+  return (
+    <Canvas shadows dpr={[1, 2]}>
+      <Perf position="top-left" />
+      <World />
+    </Canvas>
+  );
+}
 
 useGLTF.preload("/hole.gltf");
 export default Scene;

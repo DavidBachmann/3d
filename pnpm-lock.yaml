@@ -19,6 +19,7 @@ specifiers:
   r3f-perf: ^6.6.3
   react: ^18.2.0
   react-dom: ^18.2.0
+  react-joystick-component: ^6.0.0
   react-router-dom: ^6.6.1
   three: ^0.148.0
   three-stdlib: ^2.21.1
@@ -40,6 +41,7 @@ dependencies:
   r3f-perf: 6.6.3_lphf3cogdzh74g544f66ymhawq
   react: 18.2.0
   react-dom: 18.2.0_react@18.2.0
+  react-joystick-component: 6.0.0_biqbaboplfbrettd7655fr4n2y
   react-router-dom: 6.6.1_biqbaboplfbrettd7655fr4n2y
   three: 0.148.0
   three-stdlib: 2.21.1_three@0.148.0
@@ -2433,6 +2435,16 @@ packages:
 
   /react-is/16.13.1:
     resolution: {integrity: sha512-24e6ynE2H+OKt4kqsOvNd8kBpV65zoxbA4BVsEOB3ARVWQki/DHzaUoC5KuON/BiccDaCCTZBuOcfZs70kR8bQ==}
+    dev: false
+
+  /react-joystick-component/6.0.0_biqbaboplfbrettd7655fr4n2y:
+    resolution: {integrity: sha512-kbhDrPbasELoQcUxG+YNqsjsZDV3xo0TBnGXjv/TekoLZHZmmj/X/Y85YfvEPzWos6C3YmOjQKc5gK59o+jI2w==}
+    peerDependencies:
+      react: '>=17.0.2'
+      react-dom: '>=17.0.2'
+    dependencies:
+      react: 18.2.0
+      react-dom: 18.2.0_react@18.2.0
     dev: false
 
   /react-merge-refs/1.1.0:
