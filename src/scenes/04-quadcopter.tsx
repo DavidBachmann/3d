@@ -163,11 +163,11 @@ const constants = {
     ampleLift: 2.4,
     stableLift: 1.96,
     failingLift: 1.915,
-    propellerSpeed: 0.65,
+    propellerSpeed: 30,
   },
   autoBalance: {
     rollCorrection: -5,
-    pitchCorection: -5,
+    pitchCorrection: -5,
   },
   collisionBodies: {
     station: "STATION",
@@ -242,7 +242,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
       }
     });
 
-    useFrame(() => {
+    useFrame((_, dt) => {
       let pitching = false;
       let rolling = false;
       let throttling = false;
@@ -302,16 +302,22 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
       );
 
       // Drive propellers
+      const propellerEfficiency = clamp(
+        linearScale(batteryMutation.percentage, [30, 0], [1, 0.75]),
+        1,
+        0.75
+      );
+      const shouldPropel = throttling && batteryMutation.percentage > 0;
+      const propellerValue =
+        (shouldPropel ? constants.droneAttributes.propellerSpeed * dt : 0) *
+        propellerEfficiency;
+
       for (const propeller of propellers.current) {
         if (!propeller) {
           break;
         }
 
-        propeller.rotation.y += linearScale(
-          lift.current,
-          [0, constants.droneAttributes.ampleLift],
-          [0, constants.droneAttributes.propellerSpeed]
-        );
+        propeller.rotation.y += propellerValue;
       }
 
       // Charge the battery
@@ -331,7 +337,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
         const balanceForce =
           maxPitch *
           flightMutation.pitchAngle *
-          constants.autoBalance.pitchCorection;
+          constants.autoBalance.pitchCorrection;
         pitch.current = balanceForce * (flightMutation.autoBalance ? 1 : 0);
       }
 
@@ -376,7 +382,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
       if (throttling) {
         // Drain the battery
         batteryMutation.percentage = Math.max(
-          batteryMutation.percentage - 0.02,
+          batteryMutation.percentage - 0.025,
           0
         );
 
@@ -392,7 +398,8 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
       yaw.current = controlsMutation.yawInput * maxYaw * (yawing ? 1 : 0);
 
       const forwardMomentum = clamp(lift.current * 0.025, 1, 0);
-      api.applyLocalForce([0, lift.current, forwardMomentum], [0, 0, 0]);
+      const appliedLift = batteryMutation.percentage > 0 ? lift.current : 0;
+      api.applyLocalForce([0, appliedLift, forwardMomentum], [0, 0, 0]);
 
       const canManouvre = altitude > 0.01;
 
@@ -884,13 +891,13 @@ function Scene() {
               left: 0,
               right: "50%",
               margin: "auto",
-              width: 100,
+              width: 180,
             }}
           >
             <Joystick
               baseColor="#355764"
               stickColor="#FFEA11"
-              size={100}
+              size={180}
               move={handleLeftStickMove}
               stop={handleLeftStickStop}
             />
@@ -902,13 +909,13 @@ function Scene() {
               left: "50%",
               right: 0,
               margin: "auto",
-              width: 100,
+              width: 180,
             }}
           >
             <Joystick
               baseColor="#355764"
               stickColor="#FFEA11"
-              size={100}
+              size={180}
               move={handleRightStickMove}
               stop={handleRightStickStop}
             />
