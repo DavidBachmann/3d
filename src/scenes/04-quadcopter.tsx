@@ -173,6 +173,10 @@ const constants = {
     station: "STATION",
     drone: "DRONE",
   },
+  controlMethods: {
+    joystick: "JOYSTICK",
+    keyboard: "KEYBOARD",
+  },
   world: {
     gravity: -9.8,
   },
@@ -188,8 +192,12 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
     const batteryMutation = useDroneBatteryStore((state) => state.mutation);
 
     const controlsMutation = useDroneControlsStore((state) => state.mutation);
-    const keyboardControl = useDroneControlsStore(
-      (state) => state.keyboardActive
+    const currentControls = useDroneControlsStore((state) =>
+      state.keyboardActive
+        ? constants.controlMethods.keyboard
+        : state.joystickActive
+        ? constants.controlMethods.joystick
+        : null
     );
     const activateKeyboard = useDroneControlsStore((state) => () => {
       state.setKeyboardActive(true);
@@ -235,15 +243,16 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
     });
 
     useFrame(() => {
-      let throttling = false;
       let pitching = false;
       let rolling = false;
+      let throttling = false;
       let yawing = false;
 
-      if (keyboardControl) {
-        throttling = controller.controls.throttling.value;
+      if (currentControls === constants.controlMethods.keyboard) {
+        // Keyboard reads inputs from the controller class.
         pitching = controller.controls.pitching.value;
         rolling = controller.controls.rolling.value;
+        throttling = controller.controls.throttling.value;
         yawing = controller.controls.yawing.value;
         const pitchInput = controller.controls.pitchRoll.value.y;
         const rollInput = controller.controls.pitchRoll.value.x;
@@ -266,7 +275,8 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
         if (yawing) {
           controlsMutation.yawInput = yawInput * -1;
         }
-      } else {
+      } else if (currentControls === constants.controlMethods.joystick) {
+        // Joystick reads inputs directly from the store
         const pitchInput = controlsMutation.pitchInput;
         const rollInput = controlsMutation.rollInput;
         const throttleInput = controlsMutation.throttleInput;
@@ -304,6 +314,40 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
         );
       }
 
+      // Charge the battery
+      if (batteryCharging) {
+        batteryMutation.percentage = Math.min(
+          batteryMutation.percentage + 0.2,
+          100
+        );
+      }
+
+      // Set pitch
+      // "Pitch" is like a dive.
+      const maxPitch = 1;
+      if (pitching) {
+        pitch.current = controlsMutation.pitchInput * maxPitch;
+      } else {
+        const balanceForce =
+          maxPitch *
+          flightMutation.pitchAngle *
+          constants.autoBalance.pitchCorection;
+        pitch.current = balanceForce * (flightMutation.autoBalance ? 1 : 0);
+      }
+
+      // Set roll
+      // "Roll" is like rolling a barrell.
+      const maxRoll = 1;
+      if (rolling) {
+        roll.current = controlsMutation.rollInput * maxRoll;
+      } else {
+        const balanceForce =
+          maxRoll *
+          flightMutation.rollAngle *
+          constants.autoBalance.rollCorrection;
+        roll.current = balanceForce * (flightMutation.autoBalance ? 1 : 0);
+      }
+
       // Scale ample and stable lifts with battery percentage
       const scaledAmpleLift = linearScale(
         batteryMutation.percentage,
@@ -329,14 +373,6 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
         [scaledStableLift, scaledAmpleLift]
       );
 
-      if (batteryCharging) {
-        // Charge the battery
-        batteryMutation.percentage = Math.min(
-          batteryMutation.percentage + 0.2,
-          100
-        );
-      }
-
       if (throttling) {
         // Drain the battery
         batteryMutation.percentage = Math.max(
@@ -348,32 +384,6 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
         lift.current = scaledLift * controlsMutation.throttleInput;
       } else {
         lift.current = Math.max(0, (lift.current -= 0.02));
-      }
-
-      // Set roll
-      // "Roll" is like rolling a barrell.
-      const maxRoll = 1;
-      if (rolling) {
-        roll.current = controlsMutation.rollInput * maxRoll;
-      } else {
-        const balanceForce =
-          maxRoll *
-          flightMutation.rollAngle *
-          constants.autoBalance.rollCorrection;
-        roll.current = balanceForce * (flightMutation.autoBalance ? 1 : 0);
-      }
-
-      // Set pitch
-      // "Pitch" is like a dive.
-      const maxPitch = 1;
-      if (pitching) {
-        pitch.current = controlsMutation.pitchInput * maxPitch;
-      } else {
-        const balanceForce =
-          maxPitch *
-          flightMutation.pitchAngle *
-          constants.autoBalance.pitchCorection;
-        pitch.current = balanceForce * (flightMutation.autoBalance ? 1 : 0);
       }
 
       // Set yaw
@@ -822,7 +832,7 @@ function Scene() {
 
   function handleRightStickMove(e: IJoystickUpdateEvent) {
     controlsMutation.rollInput = e.x;
-    controlsMutation.pitchInput = e.x;
+    controlsMutation.pitchInput = e.y;
   }
 
   function handleRightStickStop() {
