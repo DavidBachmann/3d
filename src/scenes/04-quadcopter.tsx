@@ -854,7 +854,7 @@ function Scene() {
 
   return (
     <Fragment key="04">
-      <Canvas>
+      <Canvas dpr={1} flat frameloop="always">
         <Perf position="top-left" />
         <color attach="background" args={[0xf3f6fb]} />
         <fogExp2 attach="fog" color={0xf3f6fb} density={0.05} />
