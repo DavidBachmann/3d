@@ -8,7 +8,6 @@ import {
   OrthographicCamera,
   Plane,
 } from "@react-three/drei";
-import { useControls } from "leva";
 import create from "zustand";
 import { combine } from "zustand/middleware";
 import {
@@ -17,6 +16,7 @@ import {
   MutableRefObject,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -45,6 +45,7 @@ import { controller } from "../controller";
 import { linearScale } from "../utils/scale";
 import { clamp } from "../utils/clamp";
 import { batteryShaderMaterial as BatteryShaderMaterial } from "../shaders/battery";
+import Skybox from "../components/Skybox";
 
 // Make battery shader available as jsx element
 extend({ BatteryShaderMaterial });
@@ -75,12 +76,6 @@ type GLTFResult = GLTF & {
     ["drone-motor-geometry003_1"]: THREE.Mesh;
     ["drone-arm003"]: THREE.Mesh;
     ["drone-battery-indicator"]: THREE.Mesh;
-  };
-  materials: {
-    ["drone-propeller-material"]: THREE.MeshStandardMaterial;
-    ["drone-body-dark-material"]: THREE.MeshStandardMaterial;
-    ["drone-body-white-material"]: THREE.MeshStandardMaterial;
-    ["drone-camera"]: THREE.MeshStandardMaterial;
   };
 };
 
@@ -149,13 +144,13 @@ const useDroneBatteryStore = create(
 
 const torqueVector = new THREE.Vector3();
 const torqueQuaternion = new THREE.Quaternion();
+const dronePosition = new THREE.Vector3();
 const droneEuler = new THREE.Euler();
 const worldVector = new THREE.Vector3();
-const cameraVector = new THREE.Vector3();
-const cameraOffset = new THREE.Vector3(0, -1, 1);
+const cameraOffset = new THREE.Vector3(0, 0.5, -0.8);
 
 const constants = {
-  maxAltitude: 2.5,
+  maxAltitude: 3,
   droneAttributes: {
     size: 0.32,
     height: 0.4,
@@ -178,13 +173,13 @@ const constants = {
     keyboard: "KEYBOARD",
   },
   world: {
-    gravity: -9.8,
+    gravity: -9.2,
   },
 };
 
 const Drone = forwardRef<THREE.Group, ModelProps>(
   ({ droneApi: api }, drone: MutableRefObject<THREE.Group>) => {
-    const { nodes, materials } = useGLTF(
+    const { nodes } = useGLTF(
       "/gltfs/quadcopter.gltf"
     ) as unknown as GLTFResult;
     const flightMutation = useDroneFlightStore((state) => state.mutation);
@@ -223,6 +218,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
 
     const quaternion = useRef<Quad>([0, 0, 0, 1]);
     const rotation = useRef<Triplet>([0, 0, 0]);
+    const position = useRef<Triplet>([0, 0, 0]);
 
     useLayoutEffect(() => {
       useDroneCameraStore.setState({
@@ -232,6 +228,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
 
     api.quaternion.subscribe((val) => (quaternion.current = val));
     api.rotation.subscribe((val) => (rotation.current = val));
+    api.position.subscribe((val) => (position.current = val));
 
     controller.onDeviceChange.add((d) => {
       if (d instanceof KeyboardDevice) {
@@ -242,7 +239,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
       }
     });
 
-    useFrame((_, dt) => {
+    useFrame((state, dt) => {
       let pitching = false;
       let rolling = false;
       let throttling = false;
@@ -308,9 +305,7 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
         0.75
       );
       const shouldPropel = throttling && batteryMutation.percentage > 0;
-      const propellerValue =
-        (shouldPropel ? constants.droneAttributes.propellerSpeed * dt : 0) *
-        propellerEfficiency;
+      const propellerValue = shouldPropel ? propellerEfficiency * 0.4 : 0;
 
       for (const propeller of propellers.current) {
         if (!propeller) {
@@ -426,12 +421,6 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
       // Apply angle-corrected torque to drone
       api.applyTorque(v.toArray());
 
-      // Look at drone
-      const worldPosition = drone.current.getWorldPosition(cameraVector);
-      camera.lookAt(cameraVector);
-
-      camera.position.lerp(worldPosition.sub(cameraOffset), 0.1);
-
       // Update state
       flightMutation.liftForce = parse(lift.current);
       flightMutation.rollVelocity = parse(roll.current);
@@ -441,186 +430,150 @@ const Drone = forwardRef<THREE.Group, ModelProps>(
       flightMutation.yawVelocity = parse(yaw.current);
       flightMutation.altitude = parse(altitude);
 
+      dronePosition.set(
+        position.current[0],
+        position.current[1],
+        position.current[2]
+      );
+
+      // Look at drone
+      camera.lookAt(dronePosition);
+
+      camera.position.copy(dronePosition.add(cameraOffset));
+
       // Update game controls
       controller.update();
     });
 
+    const gm = useTexture("/textures/threeTone.jpg");
+
+    const colors = useMemo(
+      () => ({
+        propeller: new THREE.Color("#090c0d"),
+        camera: new THREE.Color("#ff0000"),
+        dark: new THREE.Color("#112233"),
+        white: new THREE.Color("f7f7f7"),
+      }),
+      []
+    );
+
     return (
       <group name={constants.collisionBodies.drone} scale={0.6} ref={drone}>
-        <group position={[0, 0, 0]}>
-          <PerspectiveCamera
-            ref={droneCamera}
-            fov={70}
-            position={[0, 0, constants.droneAttributes.size]}
-            rotation={[Math.PI, 0, Math.PI]}
-            near={0.01}
-            far={10}
-          />
-          <mesh
-            name="drone-propeller"
-            ref={(ref) => propellers.current.push(ref)}
-            castShadow
-            receiveShadow
-            geometry={nodes["drone-propeller"].geometry}
-            material={materials["drone-propeller-material"]}
-            position={[0.29, 0.05, -0.25]}
-          />
-          <group name="drone-body" position={[0.01, 0.02, 0.08]}>
-            <mesh
-              name="drone-body-geometry"
-              castShadow
-              receiveShadow
-              geometry={nodes["drone-body-geometry"].geometry}
-              material={materials["drone-body-dark-material"]}
-            />
-            <mesh
-              name="drone-body-geometry_1"
-              castShadow
-              receiveShadow
-              geometry={nodes["drone-body-geometry_1"].geometry}
-              material={materials["drone-body-white-material"]}
-            />
-            <mesh
-              name="drone-body-geometry_2"
-              castShadow
-              receiveShadow
-              geometry={nodes["drone-body-geometry_2"].geometry}
-              material={materials["drone-camera"]}
-            />
-          </group>
-          <group name="drone-motor" position={[0.27, -0.04, -0.24]}>
-            <mesh
-              name="drone-motor-geometry"
-              castShadow
-              receiveShadow
-              geometry={nodes["drone-motor-geometry"].geometry}
-              material={materials["drone-body-dark-material"]}
-            />
-            <mesh
-              name="drone-motor-geometry_1"
-              castShadow
-              receiveShadow
-              geometry={nodes["drone-motor-geometry_1"].geometry}
-              material={materials["drone-body-white-material"]}
-            />
-          </group>
-          <mesh
-            name="drone-arm"
-            castShadow
-            receiveShadow
-            geometry={nodes["drone-arm"].geometry}
-            material={materials["drone-body-dark-material"]}
-            position={[0.16, -0.01, -0.19]}
-          />
-          <mesh
-            name="drone-propeller001"
-            ref={(ref) => propellers.current.push(ref)}
-            castShadow
-            receiveShadow
-            geometry={nodes["drone-propeller001"].geometry}
-            material={materials["drone-propeller-material"]}
-            position={[-0.29, 0.05, -0.25]}
-          />
-          <group name="drone-motor001" position={[-0.27, -0.04, -0.24]}>
-            <mesh
-              name="drone-motor-geometry001"
-              castShadow
-              receiveShadow
-              geometry={nodes["drone-motor-geometry001"].geometry}
-              material={materials["drone-body-dark-material"]}
-            />
-            <mesh
-              name="drone-motor-geometry001_1"
-              castShadow
-              receiveShadow
-              geometry={nodes["drone-motor-geometry001_1"].geometry}
-              material={materials["drone-body-white-material"]}
-            />
-          </group>
-          <mesh
-            name="drone-arm001"
-            castShadow
-            receiveShadow
-            geometry={nodes["drone-arm001"].geometry}
-            material={materials["drone-body-dark-material"]}
-            position={[-0.16, -0.01, -0.19]}
-          />
-          <mesh
-            name="drone-propeller002"
-            ref={(ref) => propellers.current.push(ref)}
-            castShadow
-            receiveShadow
-            geometry={nodes["drone-propeller002"].geometry}
-            material={materials["drone-propeller-material"]}
-            position={[-0.29, 0.05, 0.19]}
-          />
-          <group name="drone-motor002" position={[-0.27, -0.04, 0.18]}>
-            <mesh
-              name="drone-motor-geometry002"
-              castShadow
-              receiveShadow
-              geometry={nodes["drone-motor-geometry002"].geometry}
-              material={materials["drone-body-dark-material"]}
-            />
-            <mesh
-              name="drone-motor-geometry002_1"
-              castShadow
-              receiveShadow
-              geometry={nodes["drone-motor-geometry002_1"].geometry}
-              material={materials["drone-body-white-material"]}
-            />
-          </group>
-          <mesh
-            name="drone-arm002"
-            castShadow
-            receiveShadow
-            geometry={nodes["drone-arm002"].geometry}
-            material={materials["drone-body-dark-material"]}
-            position={[-0.16, -0.01, 0.13]}
-          />
-          <mesh
-            name="drone-propeller003"
-            ref={(ref) => propellers.current.push(ref)}
-            castShadow
-            receiveShadow
-            geometry={nodes["drone-propeller003"].geometry}
-            material={materials["drone-propeller-material"]}
-            position={[0.29, 0.05, 0.19]}
-          />
-          <group name="drone-motor003" position={[0.27, -0.04, 0.18]}>
-            <mesh
-              name="drone-motor-geometry003"
-              castShadow
-              receiveShadow
-              geometry={nodes["drone-motor-geometry003"].geometry}
-              material={materials["drone-body-dark-material"]}
-            />
-            <mesh
-              name="drone-motor-geometry003_1"
-              castShadow
-              receiveShadow
-              geometry={nodes["drone-motor-geometry003_1"].geometry}
-              material={materials["drone-body-white-material"]}
-            />
-          </group>
-          <mesh
-            name="drone-arm003"
-            castShadow
-            receiveShadow
-            geometry={nodes["drone-arm003"].geometry}
-            material={materials["drone-body-dark-material"]}
-            position={[0.16, -0.01, 0.13]}
-          />
-          <mesh
-            name="drone-battery-indicator"
-            castShadow
-            receiveShadow
-            geometry={nodes["drone-battery-indicator"].geometry}
-            position={[0.01, 0.02, 0.08]}
-          >
-            <batteryShaderMaterial ref={batteryShaderMaterial} />
+        <PerspectiveCamera
+          ref={droneCamera}
+          fov={70}
+          position={[0, 0, constants.droneAttributes.size]}
+          rotation={[Math.PI, 0, Math.PI]}
+          near={0.01}
+          far={100}
+        />
+        <group position={[0.002, 0.023, 0.167]} castShadow>
+          <mesh geometry={nodes["drone-body-geometry001"].geometry}>
+            <meshToonMaterial color={colors.dark} gradientMap={gm} />
+          </mesh>
+          <mesh geometry={nodes["drone-body-geometry001_1"].geometry}>
+            <meshToonMaterial color={colors.white} gradientMap={gm} />
+          </mesh>
+          <mesh geometry={nodes["drone-body-geometry001_2"].geometry}>
+            <meshToonMaterial color={colors.camera} gradientMap={gm} />
           </mesh>
         </group>
+        <mesh
+          ref={(propeller) => propellers.current.push(propeller)}
+          geometry={nodes["drone-propeller"].geometry}
+          position={[0.281, 0.066, 0.283]}
+        >
+          <meshToonMaterial color={colors.propeller} gradientMap={gm} />
+        </mesh>
+        <group position={[0.267, -0.04, 0.276]}>
+          <mesh geometry={nodes["drone-motor-geometry"].geometry}>
+            <meshToonMaterial color={colors.dark} gradientMap={gm} />
+          </mesh>
+          <mesh geometry={nodes["drone-motor-geometry_1"].geometry}>
+            <meshToonMaterial color={colors.white} gradientMap={gm} />
+          </mesh>
+        </group>
+        <mesh
+          geometry={nodes["drone-arm-base"].geometry}
+          position={[0.167, -0.003, 0.229]}
+        >
+          <meshToonMaterial color={colors.dark} gradientMap={gm} />
+        </mesh>
+        <mesh
+          geometry={nodes["drone-battery-indicator"].geometry}
+          position={[0, 0.059, -0.297]}
+        >
+          <batteryShaderMaterial ref={batteryShaderMaterial} />
+        </mesh>
+        <mesh
+          geometry={nodes["drone-throttle-indicator"].geometry}
+          position={[0.001, -0.026, -0.251]}
+        >
+          <meshToonMaterial color={colors.dark} gradientMap={gm} />
+        </mesh>
+        <mesh
+          ref={(propeller) => propellers.current.push(propeller)}
+          geometry={nodes["drone-propeller001"].geometry}
+          position={[-0.278, 0.066, 0.283]}
+        >
+          <meshToonMaterial color={colors.propeller} gradientMap={gm} />
+        </mesh>
+        <group position={[-0.264, -0.04, 0.276]}>
+          <mesh geometry={nodes["drone-motor-geometry003"].geometry}>
+            <meshToonMaterial color={colors.dark} gradientMap={gm} />
+          </mesh>
+          <mesh geometry={nodes["drone-motor-geometry003_1"].geometry}>
+            <meshToonMaterial color={colors.white} gradientMap={gm} />
+          </mesh>
+        </group>
+        <mesh
+          geometry={nodes["drone-arm-base001"].geometry}
+          position={[-0.164, -0.003, 0.229]}
+        >
+          <meshToonMaterial color={colors.dark} gradientMap={gm} />
+        </mesh>
+        <mesh
+          ref={(propeller) => propellers.current.push(propeller)}
+          geometry={nodes["drone-propeller002"].geometry}
+          position={[-0.278, 0.066, -0.218]}
+        >
+          <meshToonMaterial color={colors.propeller} gradientMap={gm} />
+        </mesh>
+        <group position={[-0.264, -0.04, -0.211]}>
+          <mesh geometry={nodes["drone-motor-geometry004"].geometry}>
+            <meshToonMaterial color={colors.dark} gradientMap={gm} />
+          </mesh>
+          <mesh geometry={nodes["drone-motor-geometry004_1"].geometry}>
+            <meshToonMaterial color={colors.white} gradientMap={gm} />
+          </mesh>
+        </group>
+        <mesh
+          geometry={nodes["drone-arm-base002"].geometry}
+          position={[-0.164, -0.003, -0.164]}
+        >
+          <meshToonMaterial color={colors.dark} gradientMap={gm} />
+        </mesh>
+        <mesh
+          ref={(propeller) => propellers.current.push(propeller)}
+          geometry={nodes["drone-propeller003"].geometry}
+          position={[0.284, 0.066, -0.218]}
+        >
+          <meshToonMaterial color={colors.propeller} gradientMap={gm} />
+        </mesh>
+        <group position={[0.269, -0.04, -0.211]}>
+          <mesh geometry={nodes["drone-motor-geometry006"].geometry}>
+            <meshToonMaterial color={colors.dark} gradientMap={gm} />
+          </mesh>
+          <mesh geometry={nodes["drone-motor-geometry006_1"].geometry}>
+            <meshToonMaterial color={colors.white} gradientMap={gm} />
+          </mesh>
+        </group>
+        <mesh
+          geometry={nodes["drone-arm-base003"].geometry}
+          position={[0.169, -0.003, -0.164]}
+        >
+          <meshToonMaterial color={colors.dark} gradientMap={gm} />
+        </mesh>
       </group>
     );
   }
@@ -638,6 +591,7 @@ const Station = forwardRef<THREE.Group, StationProps>(
     station: MutableRefObject<THREE.Group>
   ) => {
     const [charging, set] = useState(false);
+
     useEffect(() => {
       const unsub = useDroneBatteryStore.subscribe((state) => {
         set(state.charging);
@@ -665,19 +619,7 @@ const Station = forwardRef<THREE.Group, StationProps>(
   }
 );
 
-const Ground = ({ size = 16 }) => {
-  const [colorMap, normalMap, roughnessMap, displacementMap] = useTexture(
-    [
-      "/textures/stylized-stone-floor/stylized-stone-floor-color.jpg",
-      "/textures/stylized-stone-floor/stylized-stone-floor-normal.jpg",
-      "/textures/stylized-stone-floor/stylized-stone-floor-roughness.jpg",
-      "/textures/stylized-stone-floor/stylized-stone-floor-height.png",
-    ],
-    (textures) => {
-      repeatTextures(textures, size);
-    }
-  );
-
+const Ground = ({ size = 128 }) => {
   const position = new THREE.Vector3(0, 0, 0);
   const rotation = new THREE.Euler(-Math.PI / 2, 0, 0);
 
@@ -693,69 +635,31 @@ const Ground = ({ size = 16 }) => {
     useRef<THREE.Mesh>(null)
   );
 
+  const colorMap = useTexture("/textures/snow01.png", (textures) => {
+    repeatTextures(textures);
+  });
+
   return (
-    <mesh ref={ref} position={position} rotation={rotation} receiveShadow>
+    <mesh
+      ref={ref}
+      position={[0, 0, 0]}
+      rotation-x={-Math.PI / 2}
+      receiveShadow
+    >
       <planeGeometry args={[size, size]} />
       <meshStandardMaterial
         map={colorMap}
-        normalMap={normalMap}
-        roughnessMap={roughnessMap}
-        displacementMap={displacementMap}
+        metalness={1}
+        roughness={1}
+        flatShading
+        color={0xffffff}
       />
     </mesh>
   );
 };
 
 function PhysicsWorld() {
-  const mutation = useDroneFlightStore((state) => state.mutation);
-  const battery = useDroneBatteryStore((state) => state.mutation);
   const charge = useDroneBatteryStore((state) => state.charge);
-  const droneCameraState = useDroneCameraStore((state) => state.mutation);
-  const droneControlsState = useDroneControlsStore((state) => state.mutation);
-
-  const [_, update] = useControls(() => ({
-    autoBalance: {
-      value: mutation.autoBalance,
-      onChange: (val) => {
-        mutation.autoBalance = val;
-      },
-    },
-    altitude: mutation.altitude,
-    battery: battery.percentage,
-    droneCamera: {
-      value: droneCameraState.isActive,
-      onChange: (val) => {
-        droneCameraState.isActive = val;
-      },
-    },
-    liftForce: mutation.liftForce,
-    yawVelocity: mutation.yawVelocity,
-    rollVelocity: mutation.rollVelocity,
-    rollAngle: mutation.rollAngle,
-    pitchVelocity: mutation.pitchVelocity,
-    pitchAngle: mutation.pitchAngle,
-    throttle: droneControlsState.throttleInput,
-  }));
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      update({
-        autoBalance: mutation.autoBalance,
-        altitude: mutation.altitude,
-        battery: battery.percentage,
-        liftForce: mutation.liftForce,
-        yawVelocity: mutation.yawVelocity,
-        rollVelocity: mutation.rollVelocity,
-        rollAngle: mutation.rollAngle,
-        pitchVelocity: mutation.pitchVelocity,
-        pitchAngle: mutation.pitchAngle,
-        droneCamera: droneCameraState.isActive,
-        throttle: droneControlsState.throttleInput,
-      });
-    }, 1000 / 5);
-
-    return () => clearTimeout(id);
-  }, []);
 
   const [drone, droneApi] = useBox(
     () => ({
@@ -853,19 +757,19 @@ function Scene() {
   }, []);
 
   return (
-    <Fragment key="04">
-      <Canvas dpr={1} flat frameloop="always">
+    <Fragment key="playground">
+      <Canvas dpr={1} frameloop="always" flat>
         <Perf position="top-left" />
-        <color attach="background" args={[0xf3f6fb]} />
         <fogExp2 attach="fog" color={0xf3f6fb} density={0.05} />
-        <ambientLight intensity={0.8} />
+        <Skybox />
+        <ambientLight intensity={0.7} />
         <directionalLight
           position={[2, 2, 2]}
           castShadow
           shadow-mapSize={1024}
         />
         <PerspectiveCamera makeDefault fov={70} position={[0, 0, 0]} />
-        <Environment preset="forest" />
+        <Environment preset="sunset" />
         <SceneRenderer />
         <Physics
           defaultContactMaterial={{
