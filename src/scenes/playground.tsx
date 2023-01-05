@@ -6,6 +6,7 @@ import {
   useFBO,
   OrthographicCamera,
   Plane,
+  OrbitControls,
 } from "@react-three/drei";
 import {
   forwardRef,
@@ -231,8 +232,9 @@ function Scene() {
           castShadow
           shadow-mapSize={1024}
         />
-        <PerspectiveCamera makeDefault fov={70} position={[0, 0, 0]} />
+        {/*<PerspectiveCamera makeDefault fov={70} position={[0, 0, 0]} />*/}
         <Environment preset="sunset" />
+        <OrbitControls makeDefault />
         <SceneRenderer />
         <Physics
           defaultContactMaterial={{

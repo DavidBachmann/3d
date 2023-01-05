@@ -7,7 +7,7 @@ import {
   useMemo,
   useRef,
 } from "react";
-import { GLTF } from "three-stdlib";
+import { GLTF, TrefoilKnot, FigureEightPolynomialKnot } from "three-stdlib";
 import { PublicApi, Quad, Triplet } from "@react-three/cannon";
 import { useFrame, useThree, extend } from "@react-three/fiber";
 import { KeyboardDevice, TouchDevice } from "@hmans/controlfreak";
@@ -68,6 +68,18 @@ const dronePosition = new THREE.Vector3();
 const droneEuler = new THREE.Euler();
 const worldVector = new THREE.Vector3();
 const cameraOffset = new THREE.Vector3(0, 0.5, -0.8);
+
+const curve = new THREE.EllipseCurve(0, 0, 5, 5, Math.PI, Math.PI * 2, true, 0);
+//const track = new THREE.TubeGeometry(curve, 200, 0.05, 10, false);
+
+const line = new THREE.Line(
+  new THREE.BufferGeometry().setFromPoints(curve.getSpacedPoints(100))
+);
+line.rotation.x = -Math.PI / 2;
+line.position.x = 1.5;
+
+const scale = 3;
+const unitVector = new THREE.Vector3();
 
 export const Drone = forwardRef<THREE.Group, ModelProps>(
   ({ droneApi: api }, drone: MutableRefObject<THREE.Group>) => {
@@ -131,6 +143,10 @@ export const Drone = forwardRef<THREE.Group, ModelProps>(
       }
     });
 
+    useThree(({ scene }) => {
+      scene.add(line);
+    });
+
     useFrame((state, dt) => {
       let pitching = false;
       let rolling = false;
@@ -183,6 +199,8 @@ export const Drone = forwardRef<THREE.Group, ModelProps>(
         1,
         0
       );
+
+      // FLIGHT LOGIC
 
       // Calculate drone altitude
       const altitude = Math.abs(
@@ -328,10 +346,16 @@ export const Drone = forwardRef<THREE.Group, ModelProps>(
         position.current[2]
       );
 
+      const time = state.clock.getElapsedTime() * 1000;
+      const looptime = 20 * 1000;
+      const t = (time % looptime) / looptime;
+
+      curve.getPointAt(t, unitVector as unknown as THREE.Vector2);
+      camera.position.copy(unitVector).sub(cameraOffset);
+      camera.position.applyMatrix4(line.matrixWorld);
+
       // Look at drone
       camera.lookAt(dronePosition);
-
-      camera.position.copy(dronePosition.add(cameraOffset));
 
       // Update game controls
       controller.update();
