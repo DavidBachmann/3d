@@ -3,11 +3,13 @@ import { PerspectiveCamera, useGLTF, useTexture } from "@react-three/drei";
 import {
   forwardRef,
   MutableRefObject,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
 } from "react";
-import { GLTF, TrefoilKnot, FigureEightPolynomialKnot } from "three-stdlib";
+import { GLTF } from "three-stdlib";
+import CameraControls from "camera-controls";
 import { PublicApi, Quad, Triplet } from "@react-three/cannon";
 import { useFrame, useThree, extend } from "@react-three/fiber";
 import { KeyboardDevice, TouchDevice } from "@hmans/controlfreak";
@@ -26,6 +28,9 @@ import { constants } from "../constants";
 
 // Make battery shader available as jsx element
 extend({ BatteryShaderMaterial });
+// Make Camera Controls available as jsx element
+CameraControls.install({ THREE });
+extend({ CameraControls });
 
 type BatteryShaderMaterial = typeof THREE.ShaderMaterial & {
   uBatteryPercentage: number;
@@ -69,26 +74,6 @@ const droneEuler = new THREE.Euler();
 const worldVector = new THREE.Vector3();
 const cameraOffset = new THREE.Vector3(0, 0, -1);
 
-const curveRadius = 2;
-const curve = new THREE.EllipseCurve(
-  0,
-  0,
-  curveRadius,
-  curveRadius,
-  0,
-  Math.PI * 2,
-  false,
-  0
-);
-
-const line = new THREE.Line(
-  new THREE.BufferGeometry().setFromPoints(curve.getSpacedPoints(100)),
-  new THREE.MeshStandardMaterial({ visible: false })
-);
-
-line.rotation.x = -Math.PI / 2;
-line.rotation.z = Math.PI / 2;
-
 const unitVector = new THREE.Vector3();
 
 export const Drone = forwardRef<THREE.Group, ModelProps>(
@@ -121,6 +106,7 @@ export const Drone = forwardRef<THREE.Group, ModelProps>(
     const batteryShaderMaterial = useRef<BatteryShaderMaterial>(null);
     const propellers = useRef<THREE.Mesh[]>([]);
     const camera = useThree((state) => state.camera);
+    const ccRef = useRef<CameraControls>(null);
 
     // Forces
     const lift = useRef(0);
@@ -138,11 +124,28 @@ export const Drone = forwardRef<THREE.Group, ModelProps>(
       useDroneCameraStore.setState({
         camera: droneCamera,
       });
-    });
+
+      if (ccRef.current) {
+        ccRef.current.setOrbitPoint(
+          drone.current.position[0],
+          drone.current.position[1],
+          drone.current.position[2]
+        );
+      }
+    }, [ccRef]);
 
     api.quaternion.subscribe((val) => (quaternion.current = val));
     api.rotation.subscribe((val) => (rotation.current = val));
     api.position.subscribe((val) => (position.current = val));
+
+    //ccRef.current?.setLookAt(
+    //  position.current[0] ?? 0,
+    //  position.current[1] ?? 0,
+    //  position.current[2] ?? 0,
+    //  position.current[0] ?? 0,
+    //  position.current[1] ?? 0,
+    //  position.current[2] ?? 0
+    //);
 
     controller.onDeviceChange.add((d) => {
       if (d instanceof KeyboardDevice) {
@@ -153,11 +156,10 @@ export const Drone = forwardRef<THREE.Group, ModelProps>(
       }
     });
 
-    useThree(({ scene }) => {
-      scene.add(line);
-    });
-
     useFrame((state, dt) => {
+      if (!ccRef?.current) {
+        return;
+      }
       let pitching = false;
       let rolling = false;
       let throttling = false;
@@ -330,6 +332,8 @@ export const Drone = forwardRef<THREE.Group, ModelProps>(
         roll.current * torqueScale
       );
 
+      const pc = position.current;
+
       // Read the current angle of the drone
       droneEuler.setFromQuaternion(q, "YXZ");
       pitchAngle.current = droneEuler.x;
@@ -350,22 +354,27 @@ export const Drone = forwardRef<THREE.Group, ModelProps>(
       flightMutation.yawVelocity = parse(yaw.current);
       flightMutation.altitude = parse(altitude);
 
-      dronePosition.set(
-        position.current[0],
-        position.current[1],
-        position.current[2]
+      // Look at drone
+      //ccRef.current?.moveTo(0, 0, 0.5);
+
+      //ccRef.current?.rotateTo(
+      //  //Math.PI + rotation.current[1],
+      //  rotation.current[1],
+      //  -Math.PI / 1,
+      //  false
+      //);
+
+      ccRef.current?.setLookAt(
+        pc[0],
+        pc[1] + 1,
+        pc[2] - 1,
+        pc[0],
+        pc[1],
+        pc[2],
+        false
       );
 
-      line.position.copy(dronePosition);
-
-      const t = 0; //droneEuler.y;
-
-      curve.getPointAt(t, unitVector as unknown as THREE.Vector2);
-      camera.position.copy(unitVector).sub(cameraOffset);
-      camera.position.applyMatrix4(line.matrixWorld);
-
-      // Look at drone
-      camera.lookAt(line.position);
+      console.log(drone.current.getWorldDirection(unitVector));
 
       // Update game controls
       controller.update();
@@ -385,6 +394,7 @@ export const Drone = forwardRef<THREE.Group, ModelProps>(
 
     return (
       <group name={constants.collisionBodies.drone} scale={0.6} ref={drone}>
+        <Cam ref={ccRef} />
         <PerspectiveCamera
           ref={droneCamera}
           fov={70}
@@ -501,6 +511,24 @@ export const Drone = forwardRef<THREE.Group, ModelProps>(
           <meshToonMaterial color={colors.dark} gradientMap={gm} />
         </mesh>
       </group>
+    );
+  }
+);
+
+export const Cam = forwardRef<CameraControls, any>(
+  (props, ref: MutableRefObject<CameraControls>) => {
+    const camera = useThree((state) => state.camera);
+    const gl = useThree((state) => state.gl);
+    useFrame((state, delta) => ref.current.update(delta));
+
+    useEffect(() => {
+      if (ref?.current) {
+        //ref.current.rotateAzimuthTo(720, true);
+      }
+    });
+
+    return (
+      <cameraControls ref={ref} args={[camera, gl.domElement]} {...props} />
     );
   }
 );

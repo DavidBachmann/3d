@@ -234,7 +234,7 @@ function Scene() {
           castShadow
           shadow-mapSize={1024}
         />
-        <PerspectiveCamera makeDefault fov={70} position={[0, 0, 0]} />
+        <PerspectiveCamera makeDefault fov={70} position={[0, 1, 0]} />
         <Environment preset="sunset" />
         {/*<OrbitControls makeDefault />*/}
         <SceneRenderer />
@@ -327,7 +327,7 @@ function SceneRenderer() {
 
   return createPortal(
     <Fragment key="pip-scene">
-      <OrthographicCamera ref={orthographicCamera} near={0.001} far={1} />
+      {/*<OrthographicCamera ref={orthographicCamera} near={0.001} far={1} />*/}
       <group
         position-z={-0.1}
         position-x={-window.innerWidth / 2 + SIZE / 2 + MARGIN}

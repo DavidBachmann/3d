@@ -12,6 +12,7 @@ specifiers:
   '@typescript-eslint/eslint-plugin': ^5.47.1
   '@typescript-eslint/parser': ^5.47.1
   '@vitejs/plugin-react': ^3.0.0
+  camera-controls: ^1.37.4
   cannon-es: ^0.20.0
   eslint: ^8.30.0
   lamina: ^1.1.23
@@ -35,6 +36,7 @@ dependencies:
   '@react-three/drei': 9.48.5_3hu7kgrmcayjixsk5pclh3mk6y
   '@react-three/fiber': 8.9.2_4tzez3c2xpzuefjrvhpyy55bva
   '@types/three': 0.146.0
+  camera-controls: 1.37.4_three@0.148.0
   cannon-es: 0.20.0
   lamina: 1.1.23_3hu7kgrmcayjixsk5pclh3mk6y
   leva: 0.9.34_biqbaboplfbrettd7655fr4n2y
@@ -1369,6 +1371,14 @@ packages:
     resolution: {integrity: sha512-P8BjAsXvZS+VIDUI11hHCQEv74YT67YUi5JJFNWIqL235sBmjX4+qx9Muvls5ivyNENctx46xQLQ3aTuE7ssaQ==}
     engines: {node: '>=6'}
     dev: true
+
+  /camera-controls/1.37.4_three@0.148.0:
+    resolution: {integrity: sha512-CwdkFgSRM6nBJtC1U+BIbETlK6rit/w4+RU8uKnEpPWnArm/sj1+1GL3im2GbgoR3ySjtD4fQ6eBK3vP6b90aQ==}
+    peerDependencies:
+      three: '>=0.126.1'
+    dependencies:
+      three: 0.148.0
+    dev: false
 
   /caniuse-lite/1.0.30001441:
     resolution: {integrity: sha512-OyxRR4Vof59I3yGWXws6i908EtGbMzVUi3ganaZQHmydk1iwDhRnvaPG2WaR0KcqrDFKrxVZHULT396LEPhXfg==}
