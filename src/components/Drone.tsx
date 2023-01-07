@@ -67,7 +67,7 @@ const torqueQuaternion = new THREE.Quaternion();
 const dronePosition = new THREE.Vector3();
 const droneEuler = new THREE.Euler();
 const worldVector = new THREE.Vector3();
-const cameraOffset = new THREE.Vector3(0, 0, -2);
+const cameraOffset = new THREE.Vector3(0, 0, -1);
 
 const curveRadius = 2;
 const curve = new THREE.EllipseCurve(
@@ -86,8 +86,8 @@ const line = new THREE.Line(
   new THREE.MeshStandardMaterial({ visible: false })
 );
 
-const lineOffset = new THREE.Vector3(0, 0, 0);
 line.rotation.x = -Math.PI / 2;
+line.rotation.z = Math.PI / 2;
 
 const unitVector = new THREE.Vector3();
 
@@ -358,9 +358,7 @@ export const Drone = forwardRef<THREE.Group, ModelProps>(
 
       line.position.copy(dronePosition);
 
-      const time = state.clock.getElapsedTime() * 1000;
-      const looptime = 6 * 1000;
-      const t = (time % looptime) / looptime;
+      const t = 0; //droneEuler.y;
 
       curve.getPointAt(t, unitVector as unknown as THREE.Vector2);
       camera.position.copy(unitVector).sub(cameraOffset);
