@@ -69,7 +69,9 @@ const droneEuler = new THREE.Euler();
 const worldVector = new THREE.Vector3();
 const cameraOffset = new THREE.Vector3(0, 0, -1);
 
-const curveRadius = 2;
+const unitVector = new THREE.Vector3();
+
+const curveRadius = 1;
 const curve = new THREE.EllipseCurve(
   0,
   0,
@@ -77,19 +79,19 @@ const curve = new THREE.EllipseCurve(
   curveRadius,
   0,
   Math.PI * 2,
-  false,
+  true,
   0
 );
 
-const line = new THREE.Line(
+// Draw a curved line around the drone where we will place our camera.
+const droneOrbit = new THREE.Line(
   new THREE.BufferGeometry().setFromPoints(curve.getSpacedPoints(100)),
   new THREE.MeshStandardMaterial({ visible: false })
 );
+droneOrbit.rotation.x = -Math.PI / 2;
+droneOrbit.rotation.z = -Math.PI / 2;
 
-line.rotation.x = -Math.PI / 2;
-line.rotation.z = Math.PI / 2;
-
-const unitVector = new THREE.Vector3();
+const droneOrbitOffset = new THREE.Vector3(0, 0.4, 0);
 
 export const Drone = forwardRef<THREE.Group, ModelProps>(
   ({ droneApi: api }, drone: MutableRefObject<THREE.Group>) => {
@@ -154,7 +156,7 @@ export const Drone = forwardRef<THREE.Group, ModelProps>(
     });
 
     useThree(({ scene }) => {
-      scene.add(line);
+      scene.add(droneOrbit);
     });
 
     useFrame((state, dt) => {
@@ -350,29 +352,29 @@ export const Drone = forwardRef<THREE.Group, ModelProps>(
       flightMutation.yawVelocity = parse(yaw.current);
       flightMutation.altitude = parse(altitude);
 
-      dronePosition.set(
-        position.current[0],
-        position.current[1],
-        position.current[2]
+      droneOrbit.position.copy(
+        drone.current.getWorldPosition(unitVector).add(droneOrbitOffset)
       );
+      // Calculate the point of the curve we want to place the camera
+      const vector = drone.current.getWorldDirection(unitVector);
+      const angle = THREE.MathUtils.radToDeg(Math.atan2(vector.x, vector.z));
+      const t = linearScale(angle, [180, -180], [0, 1]);
+      curve.getPointAt(t, dronePosition as unknown as THREE.Vector2);
 
-      line.position.copy(dronePosition);
-
-      const t = 0; //droneEuler.y;
-
-      curve.getPointAt(t, unitVector as unknown as THREE.Vector2);
-      camera.position.copy(unitVector).sub(cameraOffset);
-      camera.position.applyMatrix4(line.matrixWorld);
+      camera.position.copy(dronePosition);
+      camera.position.applyMatrix4(droneOrbit.matrixWorld);
 
       // Look at drone
-      camera.lookAt(line.position);
+      camera.lookAt(droneOrbit.position);
 
       // Update game controls
       controller.update();
     });
 
+    // Gradient map
     const gm = useTexture("/textures/threeTone.jpg");
 
+    // Material colors
     const colors = useMemo(
       () => ({
         propeller: new THREE.Color("#090c0d"),
