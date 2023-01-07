@@ -67,18 +67,28 @@ const torqueQuaternion = new THREE.Quaternion();
 const dronePosition = new THREE.Vector3();
 const droneEuler = new THREE.Euler();
 const worldVector = new THREE.Vector3();
-const cameraOffset = new THREE.Vector3(0, 0.5, -0.8);
+const cameraOffset = new THREE.Vector3(0, 0, -2);
 
-const curve = new THREE.EllipseCurve(0, 0, 5, 5, Math.PI, Math.PI * 2, true, 0);
-//const track = new THREE.TubeGeometry(curve, 200, 0.05, 10, false);
+const curveRadius = 2;
+const curve = new THREE.EllipseCurve(
+  0,
+  0,
+  curveRadius,
+  curveRadius,
+  0,
+  Math.PI * 2,
+  false,
+  0
+);
 
 const line = new THREE.Line(
-  new THREE.BufferGeometry().setFromPoints(curve.getSpacedPoints(100))
+  new THREE.BufferGeometry().setFromPoints(curve.getSpacedPoints(100)),
+  new THREE.MeshStandardMaterial({ visible: false })
 );
-line.rotation.x = -Math.PI / 2;
-line.position.x = 1.5;
 
-const scale = 3;
+const lineOffset = new THREE.Vector3(0, 0, 0);
+line.rotation.x = -Math.PI / 2;
+
 const unitVector = new THREE.Vector3();
 
 export const Drone = forwardRef<THREE.Group, ModelProps>(
@@ -346,8 +356,10 @@ export const Drone = forwardRef<THREE.Group, ModelProps>(
         position.current[2]
       );
 
+      line.position.copy(dronePosition);
+
       const time = state.clock.getElapsedTime() * 1000;
-      const looptime = 20 * 1000;
+      const looptime = 6 * 1000;
       const t = (time % looptime) / looptime;
 
       curve.getPointAt(t, unitVector as unknown as THREE.Vector2);
@@ -355,7 +367,7 @@ export const Drone = forwardRef<THREE.Group, ModelProps>(
       camera.position.applyMatrix4(line.matrixWorld);
 
       // Look at drone
-      camera.lookAt(dronePosition);
+      camera.lookAt(line.position);
 
       // Update game controls
       controller.update();

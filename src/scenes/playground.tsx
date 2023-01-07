@@ -17,6 +17,7 @@ import {
   useState,
 } from "react";
 import {
+  Debug,
   Physics,
   PublicApi,
   Triplet,
@@ -89,6 +90,7 @@ const Ground = ({ size = 128 }) => {
 
   const [ref] = usePlane(
     () => ({
+      type: "Static",
       material: {
         friction: 0.5,
         restitution: 0.5,
@@ -232,9 +234,9 @@ function Scene() {
           castShadow
           shadow-mapSize={1024}
         />
-        {/*<PerspectiveCamera makeDefault fov={70} position={[0, 0, 0]} />*/}
+        <PerspectiveCamera makeDefault fov={70} position={[0, 0, 0]} />
         <Environment preset="sunset" />
-        <OrbitControls makeDefault />
+        {/*<OrbitControls makeDefault />*/}
         <SceneRenderer />
         <Physics
           defaultContactMaterial={{
