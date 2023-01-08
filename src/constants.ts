@@ -1,7 +1,7 @@
 export const constants = {
   maxAltitude: 3,
   droneAttributes: {
-    size: 0.32,
+    size: 0.38,
     height: 0.4,
     mass: 0.2,
     ampleLift: 2.4,

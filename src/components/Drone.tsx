@@ -7,7 +7,7 @@ import {
   useMemo,
   useRef,
 } from "react";
-import { GLTF, TrefoilKnot, FigureEightPolynomialKnot } from "three-stdlib";
+import { GLTF } from "three-stdlib";
 import { PublicApi, Quad, Triplet } from "@react-three/cannon";
 import { useFrame, useThree, extend } from "@react-three/fiber";
 import { KeyboardDevice, TouchDevice } from "@hmans/controlfreak";
@@ -67,7 +67,6 @@ const torqueQuaternion = new THREE.Quaternion();
 const dronePosition = new THREE.Vector3();
 const droneEuler = new THREE.Euler();
 const worldVector = new THREE.Vector3();
-const cameraOffset = new THREE.Vector3(0, 0, -1);
 
 const unitVector = new THREE.Vector3();
 
@@ -133,7 +132,6 @@ export const Drone = forwardRef<THREE.Group, ModelProps>(
     const yaw = useRef(0);
 
     const quaternion = useRef<Quad>([0, 0, 0, 1]);
-    const rotation = useRef<Triplet>([0, 0, 0]);
     const position = useRef<Triplet>([0, 0, 0]);
 
     useLayoutEffect(() => {
@@ -143,7 +141,6 @@ export const Drone = forwardRef<THREE.Group, ModelProps>(
     });
 
     api.quaternion.subscribe((val) => (quaternion.current = val));
-    api.rotation.subscribe((val) => (rotation.current = val));
     api.position.subscribe((val) => (position.current = val));
 
     controller.onDeviceChange.add((d) => {
@@ -386,14 +383,12 @@ export const Drone = forwardRef<THREE.Group, ModelProps>(
     );
 
     return (
-      <group name={constants.collisionBodies.drone} scale={0.6} ref={drone}>
+      <group name={constants.collisionBodies.drone} scale={0.8} ref={drone}>
         <PerspectiveCamera
           ref={droneCamera}
-          fov={70}
-          position={[0, 0, constants.droneAttributes.size]}
+          fov={50}
+          position={[0, 0.1, 1]}
           rotation={[Math.PI, 0, Math.PI]}
-          near={0.01}
-          far={100}
         />
         <group position={[0.002, 0.023, 0.167]} castShadow>
           <mesh geometry={nodes["drone-body-geometry001"].geometry}>
@@ -437,7 +432,7 @@ export const Drone = forwardRef<THREE.Group, ModelProps>(
           geometry={nodes["drone-throttle-indicator"].geometry}
           position={[0.001, -0.026, -0.251]}
         >
-          <meshToonMaterial color={colors.dark} gradientMap={gm} />
+          <meshToonMaterial color={colors.white} gradientMap={gm} />
         </mesh>
         <mesh
           ref={(propeller) => propellers.current.push(propeller)}
